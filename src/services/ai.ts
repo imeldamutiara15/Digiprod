@@ -89,7 +89,7 @@ export async function parseExpenseInput(
     const currentYear = now.getFullYear();
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash",
       contents: `Parse the following expense input into a structured format. The input may contain one or multiple expenses (e.g., separated by commas or "and").
       Input: "${input}"
       
@@ -245,7 +245,96 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
   }
 }
 
-export async function getBudgetOptimizationWithInput(input: string, budgets: any[], expenses: Expense[], apiKey: string): Promise<Record<string, number> | null> {
+export async function* getFinancialInsightsStream(expenses: Expense[], budgets: Budget[], apiKey: string): AsyncGenerator<string, void, unknown> {
+  if (!apiKey) {
+    throw new Error("API_KEY_MISSING");
+  }
+
+  if (expenses.length === 0) {
+    yield "Belum ada data pengeluaran untuk dianalisis.";
+    return;
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
+    const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
+    
+    const responseStream = await ai.models.generateContentStream({
+      model: "gemini-3-flash-preview",
+      contents: `Analyze the following financial data for this month and provide 3-4 concise, actionable insights or advice in Indonesian. 
+      Focus on spending patterns, potential savings, and budget warnings (comparing actual spending vs budgets).
+      
+      Budgets (Anggaran):
+      ${budgetSummary}
+      
+      Actual Expenses:
+      ${summary}
+      
+      Format the response as a clean bulleted list in Markdown. Use the "•" symbol for each bullet point.`,
+    });
+
+    for await (const chunk of responseStream) {
+      if (chunk.text) {
+        yield chunk.text;
+      }
+    }
+  } catch (error) {
+    handleAiError(error);
+    throw error;
+  }
+}
+
+export async function* queryFinancialAIStream(input: string, expenses: Expense[], budgets: Budget[], selectedMonth: string, apiKey: string): AsyncGenerator<string, void, unknown> {
+  if (!apiKey) {
+    throw new Error("API_KEY_MISSING");
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    
+    // Format expenses for the AI
+    const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
+    const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
+    
+    const responseStream = await ai.models.generateContentStream({
+      model: "gemini-3-flash-preview",
+      contents: `You are a financial assistant. Use the following expense and budget data to answer the user's question.
+      
+      Context:
+      - Current Date: ${now.toISOString().split('T')[0]}
+      - Selected Month in UI: ${selectedMonth}
+      - Current Year: ${currentYear}
+      
+      Instructions:
+      1. If the user asks about "tahun ini" (this year), "setahun", or any yearly range, analyze ALL provided expenses for the year ${currentYear}.
+      2. If the user does NOT specify a time range (like "tahun ini", "bulan lalu", etc.), DEFAULT your analysis to the "Selected Month in UI": ${selectedMonth}.
+      3. Compare actual spending against budgets (anggaran) when relevant to provide better context.
+      4. Provide a helpful, concise response in Indonesian. Use Markdown for formatting.
+      
+      Budgets (Anggaran) for ${selectedMonth}:
+      ${budgetSummary}
+      
+      Expenses:
+      ${summary}
+      
+      User Question: "${input}"`,
+    });
+
+    for await (const chunk of responseStream) {
+      if (chunk.text) {
+        yield chunk.text;
+      }
+    }
+  } catch (error) {
+    handleAiError(error);
+    throw error;
+  }
+}
+
+export async function* getBudgetOptimizationStream(input: string, budgets: any[], expenses: Expense[], apiKey: string): AsyncGenerator<string, void, unknown> {
   if (!apiKey) {
     throw new Error("API_KEY_MISSING");
   }
@@ -262,42 +351,38 @@ export async function getBudgetOptimizationWithInput(input: string, budgets: any
       .map(([cat, amt]) => `- ${cat}: Rp ${amt}`)
       .join('\n');
 
-    const response = await ai.models.generateContent({
+    const responseStream = await ai.models.generateContentStream({
       model: "gemini-3-flash-preview",
-      contents: `You are a financial optimization expert. The user has a specific request for their budget.
+      contents: `User Request: "${input}"
       
-      User Request: "${input}"
-      
-      Current Budgets:
-      ${budgetSummary}
-      
-      Actual Spending so far:
-      ${expenseText}
-      
-      Rules for optimization:
-      1. PRIORITIZE PRIMARY NEEDS: Categories like 'Makanan & Minuman', 'Transportasi', 'Tagihan & Utilitas', and 'Kesehatan & Kebugaran' are essential.
-      2. REDUCE SECONDARY NEEDS: Cut from 'Hiburan', 'Belanja', 'Perjalanan', and 'Lainnya' if needed to meet the user's total budget target.
-      3. If the user specifies a total budget (e.g., "2 juta"), ensure the SUM of all recommended category budgets matches that total.
-      4. Round values to the nearest 50.000.
-      
-      Return ONLY a JSON object where keys are category names and values are the NEW recommended budget amounts.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: budgets.reduce((acc, b) => {
-            acc[b.category] = { type: Type.NUMBER };
-            return acc;
-          }, {} as any),
-          required: budgets.map(b => b.category)
-        }
-      }
+Current Budgets:
+${budgetSummary}
+
+Actual Spending:
+${expenseText}
+
+Rules:
+1. Jawab dengan 1-2 kalimat penjelasan singkat dalam bahasa Indonesia di AWAL.
+2. Prioritaskan kebutuhan primer, kurangi sekunder. Bulatkan ke 50.000 terdekat.
+3. Di bagian paling bawah, berikan blok JSON berisi anggaran baru untuk SEMUA kategori.
+
+Contoh:
+Anggaran Hiburan dipotong untuk hemat 500rb.
+\`\`\`json
+{
+  "Makanan & Minuman": 1500000,
+  "Hiburan": 0
+}
+\`\`\``
     });
 
-    const text = response.text;
-    if (!text) return null;
-    return JSON.parse(text);
+    for await (const chunk of responseStream) {
+      if (chunk.text) {
+        yield chunk.text;
+      }
+    }
   } catch (error) {
-    return handleAiError(error) as any;
+    handleAiError(error);
+    throw error;
   }
 }

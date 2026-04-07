@@ -5,14 +5,18 @@ import { formatCurrency } from '../lib/utils';
 import { Settings2, Save, X, Calendar, Sparkles, Loader2, Check, ArrowRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { getBudgetOptimizationWithInput } from '../services/ai';
+import { getBudgetOptimizationStream } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
+import Markdown from 'react-markdown';
 
 export const Budgets: React.FC = () => {
   const { filteredExpenses, budgets, updateBudget, selectedMonth, apiKey } = useFinance();
   const [isEditing, setIsEditing] = useState(false);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
-  const [aiOptimization, setAiOptimization] = useState<Record<string, number> | null>(null);
+  
+  const [aiMessage, setAiMessage] = useState<string>('');
+  const [aiProposedBudgets, setAiProposedBudgets] = useState<Record<string, number> | null>(null);
+  
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiInput, setAiInput] = useState('');
@@ -37,10 +41,55 @@ export const Budgets: React.FC = () => {
 
     setIsGenerating(true);
     setError(null);
+    setAiMessage('');
+    setAiProposedBudgets(null);
+    
     try {
-      const result = await getBudgetOptimizationWithInput(aiInput, budgets, filteredExpenses, apiKey);
-      setAiOptimization(result);
+      const stream = await getBudgetOptimizationStream(aiInput, budgets, filteredExpenses, apiKey);
       setAiInput('');
+      let fullText = '';
+      
+      for await (const chunk of stream) {
+        fullText += chunk;
+        
+        // Extract text before any JSON block for streaming display
+        let textPart = fullText;
+        const jsonMatchIndex = fullText.indexOf('```json');
+        const fallbackMatchIndex = fullText.indexOf('```\n{');
+        
+        if (jsonMatchIndex !== -1) {
+          textPart = fullText.substring(0, jsonMatchIndex);
+        } else if (fallbackMatchIndex !== -1) {
+          textPart = fullText.substring(0, fallbackMatchIndex);
+        }
+        
+        setAiMessage(textPart.trim());
+      }
+      
+      // Parse the JSON block after stream finishes
+      let parsedBudgets = null;
+      const jsonMatch = fullText.match(/```(?:json)?\n([\s\S]*?)\n```/);
+      if (jsonMatch && jsonMatch[1]) {
+        try {
+          parsedBudgets = JSON.parse(jsonMatch[1]);
+        } catch (e) {
+          console.error("Failed to parse JSON from AI", e);
+        }
+      } else {
+         // Fallback if AI didn't use markdown code blocks
+         const bracketMatch = fullText.match(/\{[\s\S]*\}/);
+         if (bracketMatch) {
+           try {
+             parsedBudgets = JSON.parse(bracketMatch[0]);
+           } catch(e) {}
+         }
+      }
+      
+      if (parsedBudgets) {
+        setAiProposedBudgets(parsedBudgets);
+      } else {
+        setError("Gagal membaca format anggaran dari AI.");
+      }
     } catch (error: any) {
       if (error?.message === 'QUOTA_EXCEEDED') {
         setError("Token gratis harian Anda telah habis. Harap tunggu hingga besok (waktu reset) atau gunakan API Key berbayar.");
@@ -54,12 +103,18 @@ export const Budgets: React.FC = () => {
   };
 
   const applyOptimization = () => {
-    if (!aiOptimization) return;
+    if (!aiProposedBudgets) return;
     
-    Object.entries(aiOptimization).forEach(([category, amount]) => {
+    Object.entries(aiProposedBudgets).forEach(([category, amount]) => {
       updateBudget({ category: category as Category, amount });
     });
-    setAiOptimization(null);
+    setAiMessage('');
+    setAiProposedBudgets(null);
+  };
+
+  const closeAiPanel = () => {
+    setAiMessage('');
+    setAiProposedBudgets(null);
   };
 
   const handleEditClick = () => {
@@ -166,7 +221,7 @@ export const Budgets: React.FC = () => {
       </div>
 
       <AnimatePresence>
-        {aiOptimization && (
+        {(aiMessage || aiProposedBudgets) && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -182,42 +237,48 @@ export const Budgets: React.FC = () => {
                 <h3 className="text-sm font-bold text-gray-900">Rekomendasi Optimasi Anggaran</h3>
               </div>
               <button 
-                onClick={() => setAiOptimization(null)}
+                onClick={closeAiPanel}
                 className="p-1 hover:bg-indigo-100 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4 text-gray-400" />
               </button>
             </div>
             
-            <div className="space-y-3 mb-5">
-              {Object.entries(aiOptimization).map(([category, amount]) => {
-                const currentBudget = budgets.find(b => b.category === category)?.amount || 0;
-                const diff = amount - currentBudget;
-                return (
-                  <div key={category} className="flex items-center justify-between text-xs">
-                    <span className="text-gray-600 font-medium">{category}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-gray-400 line-through">{formatCurrency(currentBudget)}</span>
-                      <ArrowRight className="w-3 h-3 text-gray-300" />
-                      <span className="text-indigo-700 font-bold">{formatCurrency(amount)}</span>
-                      {diff !== 0 && (
-                        <span className={`font-bold ${diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                          ({diff > 0 ? '+' : ''}{formatCurrency(diff)})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {aiMessage && (
+              <div className="prose prose-sm max-w-none text-gray-700 mb-5 p-4 bg-white/60 rounded-xl border border-indigo-50/50 shadow-sm text-xs sm:text-sm">
+                <Markdown>{aiMessage}</Markdown>
+              </div>
+            )}
+            
+            {aiProposedBudgets && (
+              <>
+                <div className="space-y-3 mb-5">
+                  {Object.entries(aiProposedBudgets).map(([category, amount]) => {
+                    return (
+                      <div key={category} className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600 font-medium">{category}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-indigo-700 font-bold">{formatCurrency(amount)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-            <button
-              onClick={applyOptimization}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all font-bold text-sm shadow-md active:scale-[0.98]"
-            >
-              <Check className="w-4 h-4" />
-              Terapkan Perubahan Anggaran
-            </button>
+                <button
+                  onClick={applyOptimization}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all font-bold text-sm shadow-md active:scale-[0.98]"
+                >
+                  <Check className="w-4 h-4" />
+                  Terapkan Perubahan Anggaran
+                </button>
+              </>
+            )}
+            {isGenerating && !aiMessage && !aiProposedBudgets && (
+              <div className="flex justify-center py-4">
+                <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

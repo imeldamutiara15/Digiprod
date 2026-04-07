@@ -5,7 +5,7 @@ import { formatCurrency, cn } from '../lib/utils';
 import { format, parseISO, getDay } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { Sparkles, Loader2, Send, X, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
-import { queryFinancialAI, getFinancialInsights } from '../services/ai';
+import { queryFinancialAIStream, getFinancialInsightsStream } from '../services/ai';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -93,13 +93,18 @@ export const Insights: React.FC = () => {
     
     setIsGenerating(true);
     setError(null);
+    setAiInsight(""); // Reset insight before streaming
+    
     try {
-      const result = await queryFinancialAI(query.trim(), expenses, budgets, selectedMonth, apiKey);
-      setAiInsight(result);
+      const stream = await queryFinancialAIStream(query.trim(), expenses, budgets, selectedMonth, apiKey);
       setQuery('');
+      for await (const chunk of stream) {
+        setAiInsight(prev => (prev || "") + chunk);
+      }
     } catch (error: any) {
       console.error(error);
       setError("Gagal mendapatkan wawasan AI. Periksa koneksi atau API Key Anda.");
+      if (!aiInsight) setAiInsight(null);
     } finally {
       setIsGenerating(false);
     }
@@ -113,18 +118,24 @@ export const Insights: React.FC = () => {
       }
       setIsGeneratingSummary(true);
       setError(null);
+      setGeneralSummary(""); // Reset before streaming
+      setIsSummaryExpanded(true); // Expand immediately to show typing
+      
       try {
-        const result = await getFinancialInsights(filteredExpenses, budgets, apiKey);
-        setGeneralSummary(result);
+        const stream = await getFinancialInsightsStream(filteredExpenses, budgets, apiKey);
+        for await (const chunk of stream) {
+          setGeneralSummary(prev => (prev || "") + chunk);
+        }
       } catch (error: any) {
         console.error(error);
         setError("Gagal mendapatkan ringkasan AI.");
-        setGeneralSummary("");
+        if (!generalSummary) setGeneralSummary(null);
       } finally {
         setIsGeneratingSummary(false);
       }
+    } else {
+      setIsSummaryExpanded(!isSummaryExpanded);
     }
-    setIsSummaryExpanded(!isSummaryExpanded);
   };
 
   if (pieData.length === 0) {
