@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useFinance } from '../context/FinanceContext';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line, ReferenceLine } from 'recharts';
 import { formatCurrency, cn } from '../lib/utils';
 import { format, parseISO, getDay } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { Sparkles, Loader2, Send, X, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
+import { Sparkles, Loader2, Send, X, ChevronDown, ChevronUp, Lightbulb, TrendingUp, ShieldCheck, PieChart as PieChartIcon } from 'lucide-react';
 import { queryFinancialAIStream, getFinancialInsightsStream } from '../services/ai';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
@@ -81,6 +81,87 @@ export const Insights: React.FC = () => {
       };
     })
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  // 1. Needs vs Wants Data
+  const needsCategories = ['Makanan & Minuman', 'Transportasi', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran'];
+  let needsTotal = 0;
+  let wantsTotal = 0;
+  filteredExpenses.forEach(e => {
+    if (needsCategories.includes(e.category)) needsTotal += e.amount;
+    else wantsTotal += e.amount;
+  });
+  const needsWantsData = [
+    { name: 'Kebutuhan (Primer)', value: needsTotal },
+    { name: 'Keinginan (Sekunder)', value: wantsTotal }
+  ];
+  const NEEDS_WANTS_COLORS = ['#3b82f6', '#f43f5e'];
+
+  // 2. Budget vs Actual Data
+  const budgetVsActualData = budgets.map(b => ({
+    category: b.category,
+    Anggaran: b.amount,
+    Pengeluaran: expensesByCategory[b.category] || 0
+  })).filter(d => d.Anggaran > 0 || d.Pengeluaran > 0);
+
+  // 3. Day of Week Data
+  const daysOfWeek = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const dayTotals = [0, 0, 0, 0, 0, 0, 0];
+  filteredExpenses.forEach(e => {
+    try {
+      const d = new Date(e.date);
+      if (!isNaN(d.getTime())) {
+        dayTotals[d.getDay()] += e.amount;
+      }
+    } catch(err) {}
+  });
+  const dayOfWeekData = [
+    { day: 'Senin', amount: dayTotals[1] },
+    { day: 'Selasa', amount: dayTotals[2] },
+    { day: 'Rabu', amount: dayTotals[3] },
+    { day: 'Kamis', amount: dayTotals[4] },
+    { day: 'Jumat', amount: dayTotals[5] },
+    { day: 'Sabtu', amount: dayTotals[6] },
+    { day: 'Minggu', amount: dayTotals[0] },
+  ];
+
+  // 4. Cumulative Data
+  const year = parseInt(selectedMonth.split('-')[0]);
+  const month = parseInt(selectedMonth.split('-')[1]) - 1;
+  const daysInSelectedMonth = new Date(year, month + 1, 0).getDate();
+  const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
+  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const cumulativeData = [];
+  let runningTotal = 0;
+  const expensesByDayOfMonth: Record<number, number> = {};
+  filteredExpenses.forEach(e => {
+    try {
+       const d = new Date(e.date);
+       if (!isNaN(d.getTime())) {
+         expensesByDayOfMonth[d.getDate()] = (expensesByDayOfMonth[d.getDate()] || 0) + e.amount;
+       }
+    } catch(err) {}
+  });
+
+  for (let i = 1; i <= daysInSelectedMonth; i++) {
+    runningTotal += (expensesByDayOfMonth[i] || 0);
+    cumulativeData.push({
+      date: i.toString(),
+      'Total Kumulatif': runningTotal,
+      'Batas Aman': Math.round((totalBudget / daysInSelectedMonth) * i)
+    });
+  }
+
+  // --- NEW ADVANCED METRICS ---
+  const now = new Date();
+  const isCurrentMonth = now.getFullYear() === year && now.getMonth() === month;
+  const currentDay = isCurrentMonth ? now.getDate() : daysInSelectedMonth;
+  
+  // 1. Batas Aman Harian
+  const remainingBudget = totalBudget - totalExpenses;
+  const remainingDays = daysInSelectedMonth - currentDay + 1;
+  const safeToSpend = remainingBudget > 0 && remainingDays > 0 ? remainingBudget / remainingDays : 0;
+  // ----------------------------
 
   const handleQueryAI = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -260,6 +341,29 @@ export const Insights: React.FC = () => {
         </div>
       </div>
 
+      {/* --- ADVANCED ACTIONABLE METRICS --- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+        {/* 1. Batas Aman Harian */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <h3 className="text-sm font-bold text-gray-800">Batas Aman Harian</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Jatah maksimal per hari agar tidak tekor bulan ini.</p>
+          </div>
+          <div>
+            <div className="text-2xl font-black text-gray-900">{formatCurrency(safeToSpend)}</div>
+            <div className="text-[10px] text-gray-500 mt-1">
+              Sisa {remainingDays} hari • Sisa Anggaran {formatCurrency(remainingBudget)}
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* --------------------------------------- */}
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 w-full overflow-hidden">
         <h2 className="text-lg font-semibold text-gray-800 mb-6">Pengeluaran berdasarkan Kategori</h2>
         <div className="h-[300px] w-full">
@@ -343,6 +447,150 @@ export const Insights: React.FC = () => {
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
               />
               <Bar dataKey="amount" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={40} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 1. Kebutuhan vs Keinginan */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 w-full overflow-hidden">
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Kebutuhan vs Keinginan</h2>
+        <p className="text-xs text-gray-500 mb-6">Porsi pengeluaran primer vs sekunder.</p>
+        <div className="h-[250px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={needsWantsData}
+                cx="50%"
+                cy="50%"
+                innerRadius={isMobile ? "50%" : "60%"}
+                outerRadius={isMobile ? "70%" : "80%"}
+                paddingAngle={5}
+                dataKey="value"
+              >
+                {needsWantsData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={NEEDS_WANTS_COLORS[index % NEEDS_WANTS_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip 
+                formatter={(value: number) => formatCurrency(value)}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+              />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36} 
+                iconSize={10} 
+                wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} 
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 2. Anggaran vs Aktual */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 w-full overflow-hidden">
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Anggaran vs Aktual</h2>
+        <p className="text-xs text-gray-500 mb-6">Perbandingan batas anggaran dengan pengeluaran nyata.</p>
+        <div className="h-[300px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={budgetVsActualData} margin={{ top: 10, right: 10, left: isMobile ? -30 : 0, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <XAxis 
+                dataKey="category" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: isMobile ? 8 : 10, fill: '#6b7280' }} 
+                dy={10}
+                interval={isMobile ? 'preserveStartEnd' : 0}
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: isMobile ? 8 : 10, fill: '#6b7280' }}
+                tickFormatter={(value) => typeof value === 'number' ? `${Math.round(value / 1000)}k` : '0k'}
+                width={isMobile ? 35 : 45}
+              />
+              <Tooltip 
+                cursor={{ fill: '#f9fafb' }}
+                formatter={(value: number) => formatCurrency(value)}
+                labelStyle={{ color: '#374151', fontWeight: 500, marginBottom: '4px' }}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+              />
+              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
+              <Bar dataKey="Anggaran" fill="#e5e7eb" radius={[4, 4, 0, 0]} maxBarSize={30} />
+              <Bar dataKey="Pengeluaran" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={30} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 3. Laju Pengeluaran Kumulatif */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 w-full overflow-hidden">
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Laju Pengeluaran Bulan Ini</h2>
+        <p className="text-xs text-gray-500 mb-6">Akumulasi pengeluaran harian vs batas aman.</p>
+        <div className="h-[300px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={cumulativeData} margin={{ top: 10, right: 10, left: isMobile ? -30 : 0, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <XAxis 
+                dataKey="date" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: isMobile ? 8 : 10, fill: '#6b7280' }} 
+                dy={10}
+                interval="preserveStartEnd"
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: isMobile ? 8 : 10, fill: '#6b7280' }}
+                tickFormatter={(value) => typeof value === 'number' ? `${Math.round(value / 1000)}k` : '0k'}
+                width={isMobile ? 35 : 45}
+              />
+              <Tooltip 
+                formatter={(value: number) => formatCurrency(value)}
+                labelFormatter={(label) => `Tanggal ${label}`}
+                labelStyle={{ color: '#374151', fontWeight: 500, marginBottom: '4px' }}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+              />
+              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
+              <Line type="monotone" dataKey="Batas Aman" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="Total Kumulatif" stroke="#ef4444" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 4. Hari Paling Boros */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 w-full overflow-hidden">
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Hari Paling Boros</h2>
+        <p className="text-xs text-gray-500 mb-6">Total pengeluaran berdasarkan hari dalam seminggu.</p>
+        <div className="h-[250px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={dayOfWeekData} margin={{ top: 10, right: 10, left: isMobile ? -30 : 0, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <XAxis 
+                dataKey="day" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: isMobile ? 8 : 10, fill: '#6b7280' }} 
+                dy={10}
+                interval={0}
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: isMobile ? 8 : 10, fill: '#6b7280' }}
+                tickFormatter={(value) => typeof value === 'number' ? `${Math.round(value / 1000)}k` : '0k'}
+                width={isMobile ? 35 : 45}
+              />
+              <Tooltip 
+                cursor={{ fill: '#f9fafb' }}
+                formatter={(value: number) => [formatCurrency(value), 'Total']}
+                labelStyle={{ color: '#374151', fontWeight: 500, marginBottom: '4px' }}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+              />
+              <Bar dataKey="amount" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40} />
             </BarChart>
           </ResponsiveContainer>
         </div>

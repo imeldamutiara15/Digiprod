@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Loader2, Sparkles, Leaf, AlertCircle, Check, X } from 'lucide-react';
+import { Send, Loader2, Sparkles, Coins, AlertCircle, Check, X } from 'lucide-react';
 import { parseExpenseInput } from '../services/ai';
 import { useFinance } from '../context/FinanceContext';
 import { Expense } from '../types';
@@ -94,16 +94,22 @@ export const QuickInput: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={() => setIsFrugalMode(!isFrugalMode)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold transition-colors border ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full transition-all shadow-sm border ${
               isFrugalMode 
-                ? 'bg-green-50 border-green-200 text-green-700' 
-                : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                ? 'bg-emerald-50 border-emerald-200' 
+                : 'bg-white border-gray-200 hover:bg-gray-50'
             }`}
             title="AI akan mengingatkan Anda jika pengeluaran bersifat non-primer"
           >
-            <Leaf className="w-3 h-3" />
-            Mode Hemat
+            <Coins className={`w-3.5 h-3.5 transition-colors ${isFrugalMode ? 'text-emerald-500' : 'text-gray-400'}`} />
+            <span className={`text-[10px] font-bold transition-colors ${isFrugalMode ? 'text-emerald-700' : 'text-gray-500'}`}>
+              Mode Hemat
+            </span>
+            <div className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-300 ml-0.5 ${isFrugalMode ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${isFrugalMode ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+            </div>
           </button>
           {feedback && !pendingExpenses && (
             <div className="flex items-center gap-2">

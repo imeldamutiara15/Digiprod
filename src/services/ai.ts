@@ -89,78 +89,47 @@ export async function parseExpenseInput(
     const currentYear = now.getFullYear();
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `Parse the following expense input into a structured format. The input may contain one or multiple expenses (e.g., separated by commas or "and").
+      model: "gemini-3-flash-preview",
+      contents: `Parse the following expense input into a structured JSON array. The input may contain one or multiple expenses (e.g., separated by commas or "and").
       Input: "${input}"
       
       Current Date: ${now.toISOString()}
       Current Year: ${currentYear}
       
       For each expense, extract:
-      1. amount: raw number (e.g., 50000 for Rp 50.000 or 50k)
-      2. category: one of the valid categories below
+      1. amount: raw number ONLY. Convert words to numbers (e.g., "50k" -> 50000, "1 juta" -> 1000000, "25k" -> 25000). MUST BE A NUMBER.
+      2. category: MUST be exactly one of: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'.
       3. date: ISO format (YYYY-MM-DD). Look for date indicators in the input like "tadi", "kemarin", or specific dates like "2 februari" or "10/03". 
          CRITICAL: If a day/month is mentioned without a year (e.g., "3 maret"), you MUST use the current year: ${currentYear}.
          If no date is mentioned at all, use the current date: ${now.toISOString().split('T')[0]}.
       4. description: short description in Indonesian
-      
-      Valid categories are: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'.
-      
-      ${frugalMode ? `CRITICAL FOR FRUGAL MODE: Evaluate if the expense is a "want" (tersier/sekunder) rather than a strict "need" (primer). Examples of "wants": expensive coffee (Starbucks, cafe), games, impulsive shopping, movies. Examples of "needs": groceries, rent, basic transport, electricity.
+      5. frugalWarning: ${frugalMode ? `Evaluate if the expense is a "want" (tersier/sekunder) rather than a strict "need" (primer). Examples of "wants": expensive coffee (Starbucks, cafe), games, impulsive shopping, movies. Examples of "needs": groceries, rent, basic transport, electricity.
       If it is a "want" or seems expensive for its category, generate a witty, slightly sarcastic but friendly warning in Indonesian comparing the price to something practical. 
       ${budgetContext ? `You MUST also consider the user's current budget status provided below. If the expense exceeds or dangerously depletes the remaining budget for its category or the overall budget, mention it in the warning!
       ${budgetContext}` : ''}
-      Example: "Itu setara dengan 4 porsi makan siang di warteg favoritmu. Sisa anggaran Makananmu tinggal Rp 20.000 lho, yakin?" or "Yakin? Uang segini bisa buat beli beras 5kg lho."
-      Put this warning in the 'frugalWarning' field. If it's a basic need and doesn't severely impact the budget, leave 'frugalWarning' empty.` : ''}
+      Example: "Itu setara dengan 4 porsi makan siang di warteg favoritmu. Sisa anggaran Makananmu tinggal Rp 20.000 lho, yakin?"
+      Put this warning in the 'frugalWarning' field. If it's a basic need and doesn't severely impact the budget, leave 'frugalWarning' empty ("").` : 'Always leave this as an empty string ("").'}
       
-      Return an array of expense objects.
-      `,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              amount: {
-                type: Type.NUMBER,
-                description: "The expense amount",
-              },
-              category: {
-                type: Type.STRING,
-                description: "The category of the expense",
-                enum: [
-                  'Makanan & Minuman',
-                  'Transportasi',
-                  'Belanja',
-                  'Hiburan',
-                  'Tagihan & Utilitas',
-                  'Kesehatan & Kebugaran',
-                  'Perjalanan',
-                  'Lainnya'
-                ]
-              },
-              date: {
-                type: Type.STRING,
-                description: "The date of the expense in ISO format (YYYY-MM-DD)",
-              },
-              description: {
-                type: Type.STRING,
-                description: "A short description of the expense",
-              },
-              frugalWarning: {
-                type: Type.STRING,
-                description: "Witty warning if the expense is a want and frugal mode is enabled. Empty if not applicable.",
-              }
-            },
-            required: ["amount", "category", "date", "description"]
-          }
+      Return ONLY a raw JSON array of objects. Do not include markdown code blocks like \`\`\`json.
+      
+      Example output:
+      [
+        {
+          "amount": 1000000,
+          "category": "Belanja",
+          "date": "${now.toISOString().split('T')[0]}",
+          "description": "Belanja bulanan",
+          "frugalWarning": ""
         }
-      }
+      ]
+      `
     });
 
-    const text = response.text;
+    let text = response.text;
     if (!text) return null;
+    
+    // Clean up potential markdown formatting just in case
+    text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [parsed];
