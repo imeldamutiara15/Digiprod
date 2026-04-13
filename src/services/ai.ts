@@ -51,6 +51,16 @@ function handleAiError(error: any) {
   return null;
 }
 
+let cachedAi: GoogleGenAI | null = null;
+let cachedKey: string | null = null;
+
+function getAi(apiKey: string) {
+  if (cachedAi && cachedKey === apiKey) return cachedAi;
+  cachedAi = new GoogleGenAI({ apiKey });
+  cachedKey = apiKey;
+  return cachedAi;
+}
+
 export async function parseExpenseInput(
   input: string, 
   apiKey: string, 
@@ -58,9 +68,11 @@ export async function parseExpenseInput(
   budgets?: Budget[],
   currentExpenses?: Expense[]
 ): Promise<(Omit<Expense, 'id'> & { frugalWarning?: string })[] | null> {
-  if (!apiKey) {
-    throw new Error("API_KEY_MISSING");
-  }
+  if (!apiKey) throw new Error("API_KEY_MISSING");
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentDate = now.toISOString().split('T')[0];
 
   let budgetContext = "";
   if (frugalMode && budgets && currentExpenses) {
@@ -69,74 +81,44 @@ export async function parseExpenseInput(
       return acc;
     }, {} as Record<string, number>);
     
-    const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
-    const totalSpent = currentExpenses.reduce((sum, e) => sum + e.amount, 0);
-    
-    budgetContext = `
-    STATUS ANGGARAN SAAT INI:
-    - Total Anggaran: Rp ${totalBudget.toLocaleString('id-ID')}
-    - Total Pengeluaran: Rp ${totalSpent.toLocaleString('id-ID')}
-    - Sisa Keseluruhan: Rp ${(totalBudget - totalSpent).toLocaleString('id-ID')}
-    
-    Rincian per Kategori:
-    ${budgets.map(b => {
-      const spent = expensesByCategory[b.category] || 0;
-      const remaining = b.amount - spent;
-      return `- ${b.category}: Anggaran Rp ${b.amount.toLocaleString('id-ID')}, Terpakai Rp ${spent.toLocaleString('id-ID')}, Sisa Rp ${remaining.toLocaleString('id-ID')}`;
-    }).join('\n')}
-    `;
+    budgetContext = budgets.map(b => `${b.category}:${b.amount - (expensesByCategory[b.category] || 0)}`).join('|');
   }
 
   try {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = getAi(apiKey);
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
-      contents: `Parse the following expense input into a structured JSON array. The input may contain one or multiple expenses (e.g., separated by commas or "and").
-      Input: "${input}"
-      
-      Current Date: ${now.toISOString()}
-      Current Year: ${currentYear}
-      
-      For each expense, extract:
-      1. amount: raw number ONLY. Convert words to numbers (e.g., "50k" -> 50000, "1 juta" -> 1000000, "25k" -> 25000). MUST BE A NUMBER.
-      2. category: MUST be exactly one of: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'.
-      3. date: ISO format (YYYY-MM-DD). Look for date indicators in the input like "tadi", "kemarin", or specific dates like "2 februari" or "10/03". 
-         CRITICAL: If a day/month is mentioned without a year (e.g., "3 maret"), you MUST use the current year: ${currentYear}.
-         If no date is mentioned at all, use the current date: ${now.toISOString().split('T')[0]}.
-      4. description: short description in Indonesian
-      5. frugalWarning: ${frugalMode ? `Evaluate if the expense is a "want" (tersier/sekunder) rather than a strict "need" (primer). Examples of "wants": expensive coffee (Starbucks, cafe), games, impulsive shopping, movies. Examples of "needs": groceries, rent, basic transport, electricity.
-      If it is a "want" or seems expensive for its category, generate a witty, slightly sarcastic but friendly warning in Indonesian comparing the price to something practical. 
-      ${budgetContext ? `You MUST also consider the user's current budget status provided below. If the expense exceeds or dangerously depletes the remaining budget for its category or the overall budget, mention it in the warning!
-      ${budgetContext}` : ''}
-      Example: "Itu setara dengan 4 porsi makan siang di warteg favoritmu. Sisa anggaran Makananmu tinggal Rp 20.000 lho, yakin?"
-      Put this warning in the 'frugalWarning' field. If it's a basic need and doesn't severely impact the budget, leave 'frugalWarning' empty ("").` : 'Always leave this as an empty string ("").'}
-      
-      Return ONLY a raw JSON array of objects. Do not include markdown code blocks like \`\`\`json.
-      
-      Example output:
-      [
-        {
-          "amount": 1000000,
-          "category": "Belanja",
-          "date": "${now.toISOString().split('T')[0]}",
-          "description": "Belanja bulanan",
-          "frugalWarning": ""
-        }
-      ]
-      `,
+      contents: `Input: "${input}"`,
       config: {
+        systemInstruction: `Extract expenses. Date:${currentDate}. Year:${currentYear}.
+Rules:
+- amount: number (50k/rb->50000, 1jt->1000000).
+- category: 'Makanan & Minuman'|'Transportasi'|'Belanja'|'Hiburan'|'Tagihan & Utilitas'|'Kesehatan & Kebugaran'|'Perjalanan'|'Lainnya'.
+- date: YYYY-MM-DD.
+- description: ID.
+- frugalWarning: ${frugalMode ? `If "want", witty warning. Context: ${budgetContext}` : '""'}`,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              amount: { type: Type.NUMBER },
+              category: { type: Type.STRING },
+              date: { type: Type.STRING },
+              description: { type: Type.STRING },
+              frugalWarning: { type: Type.STRING }
+            },
+            required: ["amount", "category", "date", "description", "frugalWarning"]
+          }
+        },
+        temperature: 0,
         thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
       }
     });
 
-    let text = response.text;
+    const text = response.text;
     if (!text) return null;
-    
-    // Clean up potential markdown formatting just in case
-    text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [parsed];
   } catch (error) {
@@ -152,7 +134,7 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
   if (expenses.length === 0) return "Belum ada data pengeluaran untuk dianalisis.";
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = getAi(apiKey);
     const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
@@ -185,7 +167,7 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = getAi(apiKey);
     const now = new Date();
     const currentYear = now.getFullYear();
     
@@ -237,7 +219,7 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = getAi(apiKey);
     const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
@@ -275,7 +257,7 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = getAi(apiKey);
     const now = new Date();
     const currentYear = now.getFullYear();
     
@@ -327,7 +309,7 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = getAi(apiKey);
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     const expenseSummary = expenses.reduce((acc, e) => {
       acc[e.category] = (acc[e.category] || 0) + e.amount;
