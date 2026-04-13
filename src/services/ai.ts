@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { Expense, Budget } from "../types";
 
 export async function testApiKey(apiKey: string): Promise<boolean> {
@@ -6,9 +6,12 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
   try {
     const ai = new GoogleGenAI({ apiKey });
     await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-flash-lite-preview",
       contents: "Hi",
-      config: { maxOutputTokens: 1 }
+      config: { 
+        maxOutputTokens: 1,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+      }
     });
     return true;
   } catch (error: any) {
@@ -89,7 +92,7 @@ export async function parseExpenseInput(
     const currentYear = now.getFullYear();
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-flash-lite-preview",
       contents: `Parse the following expense input into a structured JSON array. The input may contain one or multiple expenses (e.g., separated by commas or "and").
       Input: "${input}"
       
@@ -122,7 +125,10 @@ export async function parseExpenseInput(
           "frugalWarning": ""
         }
       ]
-      `
+      `,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+      }
     });
 
     let text = response.text;
@@ -162,6 +168,9 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
       ${summary}
       
       Format the response as a clean bulleted list in Markdown. Use the "•" symbol for each bullet point.`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     return response.text || null;
@@ -206,6 +215,9 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
       ${summary}
       
       User Question: "${input}"`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     return response.text || null;
@@ -241,6 +253,9 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
       ${summary}
       
       Format the response as a clean bulleted list in Markdown. Use the "•" symbol for each bullet point.`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     for await (const chunk of responseStream) {
@@ -290,6 +305,9 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
       ${summary}
       
       User Question: "${input}"`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     for await (const chunk of responseStream) {
@@ -324,25 +342,28 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
       model: "gemini-3-flash-preview",
       contents: `User Request: "${input}"
       
-Current Budgets:
-${budgetSummary}
-
-Actual Spending:
-${expenseText}
-
-Rules:
-1. Jawab dengan 1-2 kalimat penjelasan singkat dalam bahasa Indonesia di AWAL.
-2. Prioritaskan kebutuhan primer, kurangi sekunder. Bulatkan ke 50.000 terdekat.
-3. Di bagian paling bawah, berikan blok JSON berisi anggaran baru untuk SEMUA kategori.
-
-Contoh:
-Anggaran Hiburan dipotong untuk hemat 500rb.
-\`\`\`json
-{
-  "Makanan & Minuman": 1500000,
-  "Hiburan": 0
-}
-\`\`\``
+      Current Budgets:
+      ${budgetSummary}
+      
+      Actual Spending:
+      ${expenseText}
+      
+      Rules:
+      1. Jawab dengan 1-2 kalimat penjelasan singkat dalam bahasa Indonesia di AWAL.
+      2. Prioritaskan kebutuhan primer, kurangi sekunder. Bulatkan ke 50.000 terdekat.
+      3. Di bagian paling bawah, berikan blok JSON berisi anggaran baru untuk SEMUA kategori.
+      
+      Contoh:
+      Anggaran Hiburan dipotong untuk hemat 500rb.
+      \`\`\`json
+      {
+        "Makanan & Minuman": 1500000,
+        "Hiburan": 0
+      }
+      \`\`\``,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     for await (const chunk of responseStream) {

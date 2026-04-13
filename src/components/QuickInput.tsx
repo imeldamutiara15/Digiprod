@@ -81,7 +81,7 @@ export const QuickInput: React.FC = () => {
         setFeedback({ message: "Terjadi kesalahan saat memproses permintaan.", type: 'error' });
       }
     } finally {
-      setTimeout(() => setIsLoading(false), 500);
+      setIsLoading(false);
     }
   };
 
