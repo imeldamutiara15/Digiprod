@@ -90,13 +90,16 @@ export async function parseExpenseInput(
       model: "gemini-3.1-flash-lite-preview",
       contents: `Input: "${input}"`,
       config: {
-        systemInstruction: `Extract expenses. Date:${currentDate}. Year:${currentYear}.
+        systemInstruction: `Extract expenses from user input. 
+Current Date: ${currentDate}. Current Year: ${currentYear}.
+
 Rules:
-- amount: number (50k/rb->50000, 1jt->1000000).
-- category: 'Makanan & Minuman'|'Transportasi'|'Belanja'|'Hiburan'|'Tagihan & Utilitas'|'Kesehatan & Kebugaran'|'Perjalanan'|'Lainnya'.
-- date: YYYY-MM-DD.
-- description: ID.
-- frugalWarning: ${frugalMode ? `If "want", witty warning. Context: ${budgetContext}` : '""'}`,
+1. **Amount**: Convert Indonesian currency slang to numbers. 
+   Examples: "30k", "30rb", "30 rb", "30 ribu" -> 30000; "1jt", "1 juta" -> 1000000; "500" (if context is IDR) -> 500.
+2. **Category**: Assign to the most relevant category: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'. If unsure, use 'Lainnya'.
+3. **Date**: Use YYYY-MM-DD. Today is ${currentDate}. Default to today if no date mentioned.
+4. **Description**: Capitalize the first letter. Keep it concise.
+5. **Frugal Warning**: ${frugalMode ? `If the expense is a non-essential "want", provide a short witty warning in Indonesian. Context: ${budgetContext}` : '""'}`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -113,7 +116,7 @@ Rules:
           }
         },
         temperature: 0,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
     });
 
