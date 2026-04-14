@@ -6,9 +6,9 @@ import { Expense } from '../types';
 
 export const QuickInput: React.FC = () => {
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [isFrugalMode, setIsFrugalMode] = useState(false);
-  const [pendingExpenses, setPendingExpenses] = useState<(Omit<Expense, 'id'> & { frugalWarning?: string })[] | null>(null);
+  const [processingTasks, setProcessingTasks] = useState<{ id: string; text: string }[]>([]);
+  const [pendingExpenses, setPendingExpenses] = useState<(Omit<Expense, 'id'> & { frugalWarning?: string; originalText?: string })[] | null>(null);
   const [feedback, setFeedback] = useState<{ 
     message: string; 
     type: 'success' | 'error';
@@ -16,7 +16,7 @@ export const QuickInput: React.FC = () => {
   } | null>(null);
   const { addExpense, apiKey, selectedMonth, setSelectedMonth, budgets, filteredExpenses } = useFinance();
 
-  const handleSaveExpenses = (expensesToSave: Omit<Expense, 'id'>[]) => {
+  const handleSaveExpenses = (expensesToSave: (Omit<Expense, 'id'> & { originalText?: string })[]) => {
     expensesToSave.forEach(expense => addExpense(expense));
     
     const firstDate = expensesToSave[0].date;
@@ -41,47 +41,54 @@ export const QuickInput: React.FC = () => {
       });
     }
     
-    setInput('');
     setPendingExpenses(null);
     if (!expenseMonth || expenseMonth === selectedMonth) {
-      setTimeout(() => setFeedback(null), 5000);
+      setTimeout(() => setFeedback(null), 3000);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim()) return;
 
     if (!apiKey) {
-      setFeedback({ message: "Silakan masukkan API Key Gemini Anda di menu Pengaturan terlebih dahulu.", type: 'error' });
+      setFeedback({ message: "Silakan masukkan API Key Gemini Anda di menu Pengaturan.", type: 'error' });
       return;
     }
 
-    setIsLoading(true);
+    const currentInput = input;
+    const taskId = Math.random().toString(36).substring(7);
+    
+    setInput(''); // Clear input immediately for "instant" feel
+    setProcessingTasks(prev => [...prev, { id: taskId, text: currentInput }]);
     setFeedback(null);
-    setPendingExpenses(null);
+
     try {
-      const parsedExpenses = await parseExpenseInput(input, apiKey, isFrugalMode, budgets, filteredExpenses);
+      const parsedExpenses = await parseExpenseInput(currentInput, apiKey, isFrugalMode, budgets, filteredExpenses);
+      
+      // Remove from processing queue
+      setProcessingTasks(prev => prev.filter(t => t.id !== taskId));
+
       if (parsedExpenses && parsedExpenses.length > 0) {
         const hasWarning = parsedExpenses.some(e => e.frugalWarning);
         
         if (isFrugalMode && hasWarning) {
-          setPendingExpenses(parsedExpenses);
+          // If frugal mode and there's a warning, we must show it
+          setPendingExpenses(parsedExpenses.map(e => ({ ...e, originalText: currentInput })));
         } else {
           handleSaveExpenses(parsedExpenses);
         }
       } else {
-        setFeedback({ message: "Tidak dapat memahami pengeluaran. Silakan coba lagi.", type: 'error' });
+        setFeedback({ message: `Gagal memahami: "${currentInput}"`, type: 'error' });
       }
     } catch (error: any) {
+      setProcessingTasks(prev => prev.filter(t => t.id !== taskId));
       if (error?.message === 'QUOTA_EXCEEDED') {
-        setFeedback({ message: "Token gratis harian Anda telah habis. Harap tunggu hingga besok.", type: 'error' });
+        setFeedback({ message: "Kuota AI habis. Tunggu besok.", type: 'error' });
       } else {
         console.error("Failed to parse expense", error);
-        setFeedback({ message: "Terjadi kesalahan saat memproses permintaan.", type: 'error' });
+        setFeedback({ message: "Terjadi kesalahan AI.", type: 'error' });
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -129,11 +136,24 @@ export const QuickInput: React.FC = () => {
         </div>
       </div>
 
+      {/* Processing Tasks (Optimistic UI) */}
+      {processingTasks.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {processingTasks.map(task => (
+            <div key={task.id} className="flex items-center gap-2 px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-medium animate-pulse border border-indigo-100">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span>Memproses: "{task.text}"</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {pendingExpenses ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
           <div className="flex items-start gap-2 mb-3">
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div className="space-y-2">
+              <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Peringatan Mode Hemat</p>
               {pendingExpenses.map((exp, idx) => (
                 <div key={idx} className="text-xs text-amber-900">
                   <span className="font-bold">{exp.description} (Rp {exp.amount.toLocaleString('id-ID')}): </span>
@@ -167,16 +187,15 @@ export const QuickInput: React.FC = () => {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="cth., Kopi 50k di 2 februari atau Makan 100k kemarin..."
+            placeholder="cth., Kopi 50k tadi atau Makan 100k kemarin..."
             className="w-full pl-3 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-xs md:text-sm text-gray-700 placeholder-gray-400"
-            disabled={isLoading}
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={!input.trim()}
             className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            <Send className="w-3.5 h-3.5" />
           </button>
         </form>
       )}
