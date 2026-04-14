@@ -5,15 +5,30 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
   if (!apiKey) return false;
   try {
     const ai = new GoogleGenAI({ apiKey });
-    await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
-      contents: "Hi",
-      config: { 
-        maxOutputTokens: 1,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+    // Try primary model first
+    try {
+      await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: "Hi",
+        config: { 
+          maxOutputTokens: 1,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+        }
+      });
+      return true;
+    } catch (e: any) {
+      const errStr = String(e).toLowerCase();
+      // If model not found or access denied, try fallback
+      if (errStr.includes('not found') || errStr.includes('404') || errStr.includes('permission') || errStr.includes('403')) {
+        await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: "Hi",
+          config: { maxOutputTokens: 1 }
+        });
+        return true;
       }
-    });
-    return true;
+      throw e;
+    }
   } catch (error: any) {
     let errorStr = '';
     if (error instanceof Error) {
@@ -47,12 +62,16 @@ function handleAiError(error: any) {
   if (errorStr.includes('429') || errorStr.includes('quota') || errorStr.includes('exhausted')) {
     throw new Error("QUOTA_EXCEEDED");
   }
-  console.error("AI Error:", error);
+  
+  // Log the full error for debugging
+  console.error("Detailed AI Error:", error);
+  
   return null;
 }
 
 let cachedAi: GoogleGenAI | null = null;
 let cachedKey: string | null = null;
+let useFallbackModel = false;
 
 function getAi(apiKey: string) {
   if (cachedAi && cachedKey === apiKey) return cachedAi;
@@ -84,44 +103,60 @@ export async function parseExpenseInput(
     budgetContext = budgets.map(b => `${b.category}:${b.amount - (expensesByCategory[b.category] || 0)}`).join('|');
   }
 
-  try {
-    const ai = getAi(apiKey);
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
-      contents: `Input: "${input}"`,
-      config: {
-        systemInstruction: `Extract expenses. Date:${currentDate}. Year:${currentYear}.
+  const ai = getAi(apiKey);
+  const systemInstruction = `Extract expenses. Date:${currentDate}. Year:${currentYear}.
 Rules:
 - amount: number (50k/rb->50000, 1jt->1000000).
 - category: 'Makanan & Minuman'|'Transportasi'|'Belanja'|'Hiburan'|'Tagihan & Utilitas'|'Kesehatan & Kebugaran'|'Perjalanan'|'Lainnya'.
 - date: YYYY-MM-DD.
 - description: ID.
-- frugalWarning: ${frugalMode ? `If "want", witty warning. Context: ${budgetContext}` : '""'}`,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              amount: { type: Type.NUMBER },
-              category: { type: Type.STRING },
-              date: { type: Type.STRING },
-              description: { type: Type.STRING },
-              frugalWarning: { type: Type.STRING }
-            },
-            required: ["amount", "category", "date", "description", "frugalWarning"]
-          }
-        },
-        temperature: 0,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
-      }
+- frugalWarning: ${frugalMode ? `If "want", witty warning. Context: ${budgetContext}` : '""'}`;
+
+  const responseSchema = {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        amount: { type: Type.NUMBER },
+        category: { type: Type.STRING },
+        date: { type: Type.STRING },
+        description: { type: Type.STRING },
+        frugalWarning: { type: Type.STRING }
+      },
+      required: ["amount", "category", "date", "description", "frugalWarning"]
+    }
+  };
+
+  try {
+    const modelName = useFallbackModel ? "gemini-1.5-flash" : "gemini-3.1-flash-lite-preview";
+    const config: any = {
+      systemInstruction,
+      responseMimeType: "application/json",
+      responseSchema,
+      temperature: 0,
+    };
+
+    if (!useFallbackModel) {
+      config.thinkingConfig = { thinkingLevel: ThinkingLevel.MINIMAL };
+    }
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: `Input: "${input}"`,
+      config
     });
 
     const text = response.text;
     if (!text) return null;
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [parsed];
-  } catch (error) {
+  } catch (error: any) {
+    const errStr = String(error).toLowerCase();
+    if (!useFallbackModel && (errStr.includes('not found') || errStr.includes('404') || errStr.includes('permission') || errStr.includes('403'))) {
+      console.warn("Primary model failed, switching to fallback gemini-1.5-flash");
+      useFallbackModel = true;
+      return parseExpenseInput(input, apiKey, frugalMode, budgets, currentExpenses);
+    }
     return handleAiError(error) as any;
   }
 }
@@ -138,8 +173,14 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
     const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
+    const modelName = useFallbackModel ? "gemini-1.5-flash" : "gemini-3-flash-preview";
+    const config: any = {};
+    if (!useFallbackModel) {
+      config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+    }
+
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: modelName,
       contents: `Analyze the following financial data for this month and provide 3-4 concise, actionable insights or advice in Indonesian. 
       Focus on spending patterns, potential savings, and budget warnings (comparing actual spending vs budgets).
       
@@ -150,13 +191,16 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
       ${summary}
       
       Format the response as a clean bulleted list in Markdown. Use the "•" symbol for each bullet point.`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-      }
+      config
     });
 
     return response.text || null;
-  } catch (error) {
+  } catch (error: any) {
+    const errStr = String(error).toLowerCase();
+    if (!useFallbackModel && (errStr.includes('not found') || errStr.includes('404') || errStr.includes('permission') || errStr.includes('403'))) {
+      useFallbackModel = true;
+      return getFinancialInsights(expenses, budgets, apiKey);
+    }
     return handleAiError(error) as any;
   }
 }
@@ -175,8 +219,14 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
     const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
+    const modelName = useFallbackModel ? "gemini-1.5-flash" : "gemini-3-flash-preview";
+    const config: any = {};
+    if (!useFallbackModel) {
+      config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+    }
+
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: modelName,
       contents: `You are a financial assistant. Use the following expense and budget data to answer the user's question.
       
       Context:
@@ -197,13 +247,16 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
       ${summary}
       
       User Question: "${input}"`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-      }
+      config
     });
 
     return response.text || null;
-  } catch (error) {
+  } catch (error: any) {
+    const errStr = String(error).toLowerCase();
+    if (!useFallbackModel && (errStr.includes('not found') || errStr.includes('404') || errStr.includes('permission') || errStr.includes('403'))) {
+      useFallbackModel = true;
+      return queryFinancialAI(input, expenses, budgets, selectedMonth, apiKey);
+    }
     return handleAiError(error) as any;
   }
 }
@@ -223,8 +276,14 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
     const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
+    const modelName = useFallbackModel ? "gemini-1.5-flash" : "gemini-3-flash-preview";
+    const config: any = {};
+    if (!useFallbackModel) {
+      config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+    }
+
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-3-flash-preview",
+      model: modelName,
       contents: `Analyze the following financial data for this month and provide 3-4 concise, actionable insights or advice in Indonesian. 
       Focus on spending patterns, potential savings, and budget warnings (comparing actual spending vs budgets).
       
@@ -235,9 +294,7 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
       ${summary}
       
       Format the response as a clean bulleted list in Markdown. Use the "•" symbol for each bullet point.`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-      }
+      config
     });
 
     for await (const chunk of responseStream) {
@@ -245,7 +302,14 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
         yield chunk.text;
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    const errStr = String(error).toLowerCase();
+    if (!useFallbackModel && (errStr.includes('not found') || errStr.includes('404') || errStr.includes('permission') || errStr.includes('403'))) {
+      useFallbackModel = true;
+      // Note: Generators are harder to retry inline, so we just throw and let the UI handle it or next call will use fallback
+      handleAiError(error);
+      throw error;
+    }
     handleAiError(error);
     throw error;
   }
@@ -265,8 +329,14 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
     const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
+    const modelName = useFallbackModel ? "gemini-1.5-flash" : "gemini-3-flash-preview";
+    const config: any = {};
+    if (!useFallbackModel) {
+      config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+    }
+
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-3-flash-preview",
+      model: modelName,
       contents: `You are a financial assistant. Use the following expense and budget data to answer the user's question.
       
       Context:
@@ -287,9 +357,7 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
       ${summary}
       
       User Question: "${input}"`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-      }
+      config
     });
 
     for await (const chunk of responseStream) {
@@ -297,7 +365,13 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
         yield chunk.text;
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    const errStr = String(error).toLowerCase();
+    if (!useFallbackModel && (errStr.includes('not found') || errStr.includes('404') || errStr.includes('permission') || errStr.includes('403'))) {
+      useFallbackModel = true;
+      handleAiError(error);
+      throw error;
+    }
     handleAiError(error);
     throw error;
   }
@@ -320,8 +394,14 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
       .map(([cat, amt]) => `- ${cat}: Rp ${amt}`)
       .join('\n');
 
+    const modelName = useFallbackModel ? "gemini-1.5-flash" : "gemini-3-flash-preview";
+    const config: any = {};
+    if (!useFallbackModel) {
+      config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+    }
+
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-3-flash-preview",
+      model: modelName,
       contents: `User Request: "${input}"
       
       Current Budgets:
@@ -343,9 +423,7 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
         "Hiburan": 0
       }
       \`\`\``,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-      }
+      config
     });
 
     for await (const chunk of responseStream) {
@@ -353,7 +431,13 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
         yield chunk.text;
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    const errStr = String(error).toLowerCase();
+    if (!useFallbackModel && (errStr.includes('not found') || errStr.includes('404') || errStr.includes('permission') || errStr.includes('403'))) {
+      useFallbackModel = true;
+      handleAiError(error);
+      throw error;
+    }
     handleAiError(error);
     throw error;
   }
