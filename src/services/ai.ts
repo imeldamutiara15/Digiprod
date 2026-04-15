@@ -6,10 +6,10 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-3-flash-preview",
       contents: "Hi",
       config: { 
-        maxOutputTokens: 10,
+        maxOutputTokens: 5,
         thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
       }
     });
@@ -87,7 +87,7 @@ export async function parseExpenseInput(
   try {
     const ai = getAi(apiKey);
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-3-flash-preview",
       contents: `Input: "${input}"`,
       config: {
         systemInstruction: `Extract expenses from user input. 
