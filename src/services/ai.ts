@@ -5,15 +5,15 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
   if (!apiKey) return false;
   try {
     const ai = new GoogleGenAI({ apiKey });
-    await ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite-preview",
       contents: "Hi",
       config: { 
-        maxOutputTokens: 1,
+        maxOutputTokens: 10,
         thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
       }
     });
-    return true;
+    return !!response.text;
   } catch (error: any) {
     let errorStr = '';
     if (error instanceof Error) {

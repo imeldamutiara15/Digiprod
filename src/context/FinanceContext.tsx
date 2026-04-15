@@ -69,7 +69,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
 
   const [apiKey, setApiKey] = useState(() => {
-    return localStorage.getItem('gemini_api_key') || '';
+    return localStorage.getItem('gemini_api_key') || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : '') || '';
   });
 
   useEffect(() => {

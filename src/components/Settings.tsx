@@ -7,7 +7,10 @@ export const Settings: React.FC = () => {
   const { apiKey, setApiKey, clearAllData } = useFinance();
   const [localApiKey, setLocalApiKey] = useState(apiKey);
   const [status, setStatus] = useState<'idle' | 'testing' | 'success' | 'error' | 'quota_exceeded'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const isEnvKey = !localStorage.getItem('gemini_api_key') && !!process.env.GEMINI_API_KEY;
 
   useEffect(() => {
     setLocalApiKey(apiKey);
@@ -16,25 +19,31 @@ export const Settings: React.FC = () => {
   const handleSaveAndTest = async () => {
     if (!localApiKey.trim()) {
       setApiKey('');
+      localStorage.removeItem('gemini_api_key');
       setStatus('idle');
       return;
     }
 
     setStatus('testing');
+    setErrorMessage('');
     try {
       const isValid = await testApiKey(localApiKey);
       if (isValid) {
         setApiKey(localApiKey);
+        localStorage.setItem('gemini_api_key', localApiKey);
         setStatus('success');
       } else {
         setStatus('error');
+        setErrorMessage('API Key tidak memberikan respon. Pastikan key benar.');
       }
     } catch (error: any) {
       if (error.message === 'QUOTA_EXCEEDED') {
-        setApiKey(localApiKey); // Still save it, but show quota warning
+        setApiKey(localApiKey);
+        localStorage.setItem('gemini_api_key', localApiKey);
         setStatus('quota_exceeded');
       } else {
         setStatus('error');
+        setErrorMessage(error.message || 'Terjadi kesalahan saat menguji API Key.');
       }
     }
   };
@@ -89,6 +98,11 @@ export const Settings: React.FC = () => {
             </div>
             
             {/* Status Messages */}
+            {isEnvKey && localApiKey === apiKey && (
+              <p className="mt-2 text-sm text-blue-600 flex items-center gap-1.5 font-medium">
+                <CheckCircle2 className="w-4 h-4" /> Menggunakan API Key dari sistem (AI Studio).
+              </p>
+            )}
             {status === 'idle' && localApiKey !== apiKey && (
               <p className="mt-2 text-sm text-amber-600 flex items-center gap-1.5 font-medium">
                 <AlertTriangle className="w-4 h-4" /> Perubahan belum disimpan. Klik "Simpan & Uji".
@@ -101,7 +115,7 @@ export const Settings: React.FC = () => {
             )}
             {status === 'error' && (
               <p className="mt-2 text-sm text-red-600 flex items-center gap-1.5 font-medium">
-                <XCircle className="w-4 h-4" /> API Key tidak valid. Perubahan dibatalkan.
+                <XCircle className="w-4 h-4" /> {errorMessage || 'API Key tidak valid. Perubahan dibatalkan.'}
               </p>
             )}
             {status === 'quota_exceeded' && localApiKey === apiKey && (
