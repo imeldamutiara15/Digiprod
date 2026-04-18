@@ -93,11 +93,14 @@ export const QuickInput: React.FC = () => {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 md:p-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+    <div className="bg-gradient-to-br from-indigo-50 to-white rounded-xl shadow-sm border border-indigo-100 p-3 md:p-4 relative overflow-hidden">
+      <div className="absolute top-0 right-0 p-3 opacity-5 pointer-events-none">
+        <Sparkles className="w-12 h-12 text-indigo-600" />
+      </div>
+      <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-          <h2 className="text-xs font-semibold text-gray-800">Pencatat Pengeluaran AI</h2>
+          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+          <h2 className="text-xs font-bold text-indigo-900">Pencatat Pengeluaran AI</h2>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -182,13 +185,13 @@ export const QuickInput: React.FC = () => {
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="relative">
+        <form onSubmit={handleSubmit} className="relative z-10">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="cth., Kopi 50k tadi atau Makan 100k kemarin..."
-            className="w-full pl-3 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-xs md:text-sm text-gray-700 placeholder-gray-400"
+            placeholder="cth., Kopi 50k atau Makan 100k kemarin..."
+            className="w-full pl-3 pr-10 py-2.5 bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-xs md:text-sm text-gray-700 placeholder-gray-400 shadow-sm"
           />
           <button
             type="submit"

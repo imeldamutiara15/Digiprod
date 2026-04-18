@@ -16,6 +16,7 @@ interface FinanceContextType {
   addRecurringExpense: (expense: Omit<RecurringExpense, 'id'>) => void;
   deleteRecurringExpense: (id: string) => void;
   toggleRecurringExpense: (id: string) => void;
+  importData: (data: { expenses?: Expense[]; budgets?: Budget[]; recurringExpenses?: RecurringExpense[] }) => void;
   clearAllData: () => void;
 }
 
@@ -199,6 +200,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       req.id === id ? { ...req, active: !req.active } : req
     ));
   };
+  
+  const importData = (data: { expenses?: Expense[]; budgets?: Budget[]; recurringExpenses?: RecurringExpense[] }) => {
+    if (data.expenses) setExpenses(data.expenses);
+    if (data.budgets) setAllBudgets(data.budgets);
+    if (data.recurringExpenses) setRecurringExpenses(data.recurringExpenses);
+  };
 
   const clearAllData = () => {
     setExpenses([]);
@@ -225,6 +232,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addRecurringExpense,
       deleteRecurringExpense,
       toggleRecurringExpense,
+      importData,
       clearAllData
     }}>
       {children}

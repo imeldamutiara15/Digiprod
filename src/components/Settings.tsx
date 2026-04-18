@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFinance } from '../context/FinanceContext';
-import { Key, ShieldCheck, ExternalLink, CheckCircle2, XCircle, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { Key, ShieldCheck, ExternalLink, CheckCircle2, XCircle, Loader2, Trash2, AlertTriangle, Download, Upload, FileJson } from 'lucide-react';
 import { testApiKey } from '../services/ai';
 
 export const Settings: React.FC = () => {
-  const { apiKey, setApiKey, clearAllData } = useFinance();
+  const { apiKey, setApiKey, clearAllData, expenses, budgets, recurringExpenses, importData } = useFinance();
   const [localApiKey, setLocalApiKey] = useState(apiKey);
   const [status, setStatus] = useState<'idle' | 'testing' | 'success' | 'error' | 'quota_exceeded'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isEnvKey = !localStorage.getItem('gemini_api_key') && !!process.env.GEMINI_API_KEY;
 
@@ -53,8 +55,62 @@ export const Settings: React.FC = () => {
     setShowDeleteConfirm(false);
   };
 
+  const handleExportData = () => {
+    const data = {
+      expenses,
+      budgets,
+      recurringExpenses,
+      exportDate: new Date().toISOString(),
+      version: '1.0'
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pencatatan_keuangan_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (json.expenses || json.budgets || json.recurringExpenses) {
+          importData({
+            expenses: json.expenses,
+            budgets: json.budgets,
+            recurringExpenses: json.recurringExpenses
+          });
+          setImportStatus('success');
+          setTimeout(() => setImportStatus('idle'), 3000);
+        } else {
+          throw new Error('Format file tidak valid');
+        }
+      } catch (err) {
+        console.error('Import failed', err);
+        setImportStatus('error');
+        setTimeout(() => setImportStatus('idle'), 3000);
+      }
+    };
+    reader.readAsText(file);
+    // Reset input
+    e.target.value = '';
+  };
+
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-2xl px-4 sm:px-0">
       {/* API Key Settings */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-center gap-3 mb-6">
@@ -70,7 +126,7 @@ export const Settings: React.FC = () => {
         <div className="space-y-4">
           <div>
             <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 mb-1">
-              Gemini API Key
+              AI API Key
             </label>
             <div className="flex flex-col sm:flex-row gap-3">
               <input
@@ -100,7 +156,7 @@ export const Settings: React.FC = () => {
             {/* Status Messages */}
             {isEnvKey && localApiKey === apiKey && (
               <p className="mt-2 text-sm text-blue-600 flex items-center gap-1.5 font-medium">
-                <CheckCircle2 className="w-4 h-4" /> Menggunakan API Key dari sistem (AI Studio).
+                <CheckCircle2 className="w-4 h-4" /> Menggunakan API Key dari sistem.
               </p>
             )}
             {status === 'idle' && localApiKey !== apiKey && (
@@ -110,37 +166,98 @@ export const Settings: React.FC = () => {
             )}
             {status === 'success' && localApiKey === apiKey && (
               <p className="mt-2 text-sm text-green-600 flex items-center gap-1.5 font-medium">
-                <CheckCircle2 className="w-4 h-4" /> API Key valid dan berhasil disimpan.
+                <CheckCircle2 className="w-4 h-4" /> API Key berhasil disimpan.
               </p>
             )}
             {status === 'error' && (
               <p className="mt-2 text-sm text-red-600 flex items-center gap-1.5 font-medium">
-                <XCircle className="w-4 h-4" /> {errorMessage || 'API Key tidak valid. Perubahan dibatalkan.'}
+                <XCircle className="w-4 h-4" /> {errorMessage || 'API Key tidak valid.'}
               </p>
             )}
             {status === 'quota_exceeded' && localApiKey === apiKey && (
               <p className="mt-2 text-sm text-amber-600 flex items-center gap-1.5 font-medium">
-                <AlertTriangle className="w-4 h-4" /> API Key valid dan disimpan, namun token gratis harian Anda telah habis.
+                <AlertTriangle className="w-4 h-4" /> API Key disimpan, namun batas penggunaan gratis harian telah habis.
               </p>
             )}
           </div>
 
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3">
-            <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800">
-              <p className="font-medium mb-1">Aman & Privat</p>
-              <p className="mb-2">API Key Anda hanya disimpan secara lokal di browser perangkat ini (menggunakan LocalStorage) dan tidak pernah dikirim ke server kami.</p>
-              <a 
-                href="https://aistudio.google.com/app/apikey" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-blue-700 font-medium hover:text-blue-900"
-              >
-                Dapatkan API Key gratis di Google AI Studio <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <a 
+              href="https://aistudio.google.com/app/apikey" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center gap-3 hover:bg-indigo-100 transition-colors group"
+            >
+              <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <ExternalLink className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-indigo-900">Dapatkan API Key Gratis</p>
+                <p className="text-[10px] text-indigo-700">Klik untuk mengambil kunci akses</p>
+              </div>
+            </a>
           </div>
         </div>
+      </div>
+
+      {/* Backup & Restore */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center">
+            <FileJson className="w-5 h-5 text-emerald-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Cadangkan & Pulihkan</h2>
+            <p className="text-sm text-gray-500">Ekspor data Anda atau pindahkan ke perangkat lain</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={handleExportData}
+            className="p-4 bg-white border border-gray-200 rounded-xl flex items-center gap-3 hover:border-emerald-300 hover:bg-emerald-50 transition-all group text-left"
+          >
+            <div className="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+              <Download className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-900">Ekspor Data (JSON)</p>
+              <p className="text-[10px] text-gray-500">Simpan cadangan ke perangkat</p>
+            </div>
+          </button>
+
+          <button
+            onClick={handleImportClick}
+            className="p-4 bg-white border border-gray-200 rounded-xl flex items-center gap-3 hover:border-blue-300 hover:bg-blue-50 transition-all group text-left"
+          >
+            <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+              <Upload className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-900">Impor Data (JSON)</p>
+              <p className="text-[10px] text-gray-500">Gunakan file cadangan Anda</p>
+            </div>
+          </button>
+        </div>
+
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept=".json"
+          className="hidden"
+        />
+
+        {importStatus === 'success' && (
+          <p className="mt-3 text-xs text-green-600 font-bold flex items-center gap-1 animate-bounce">
+            <CheckCircle2 className="w-3 h-3" /> Data berhasil diimpor!
+          </p>
+        )}
+        {importStatus === 'error' && (
+          <p className="mt-3 text-xs text-red-600 font-bold flex items-center gap-1">
+            <XCircle className="w-3 h-3" /> Gagal mengimpor file. Pastikan format benar.
+          </p>
+        )}
       </div>
 
       {/* Data Management */}

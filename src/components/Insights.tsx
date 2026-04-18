@@ -230,25 +230,45 @@ export const Insights: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Quick Summary Box (Collapsible) */}
-      <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 overflow-hidden w-full">
+      <div className={cn(
+        "rounded-2xl shadow-sm transition-all duration-300 overflow-hidden w-full border",
+        isSummaryExpanded 
+          ? "bg-white border-indigo-100" 
+          : "bg-indigo-50/50 border-indigo-200 hover:border-indigo-400 hover:shadow-md active:scale-[0.99]"
+      )}>
         <button 
           onClick={handleToggleSummary}
-          className="w-full flex items-center justify-between p-4 hover:bg-indigo-50/50 transition-colors"
+          className="w-full flex items-center justify-between p-4 transition-colors"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center shrink-0">
-              <Lightbulb className="w-5 h-5 text-indigo-600" />
+            <div className={cn(
+              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors",
+              isSummaryExpanded ? "bg-indigo-100" : "bg-indigo-600 shadow-sm"
+            )}>
+              <Sparkles className={cn("w-5 h-5", isSummaryExpanded ? "text-indigo-600" : "text-white")} />
             </div>
             <div className="text-left">
-              <h3 className="text-sm font-bold text-gray-900">Ringkasan Cerdas</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-gray-900">Ringkasan Cerdas</h3>
+                {!isSummaryExpanded && !generalSummary && (
+                  <span className="bg-indigo-600 text-[8px] text-white px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider animate-pulse">
+                    AI
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] text-gray-500">Analisis otomatis pola pengeluaran Anda.</p>
             </div>
           </div>
-          {isGeneratingSummary ? (
-            <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
-          ) : (
-            isSummaryExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />
-          )}
+          <div className="flex items-center gap-2">
+            {!isSummaryExpanded && !generalSummary && (
+              <span className="text-[10px] font-bold text-indigo-600 hidden sm:inline">Coba Sekarang</span>
+            )}
+            {isGeneratingSummary ? (
+              <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+            ) : (
+              isSummaryExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-indigo-400" />
+            )}
+          </div>
         </button>
         
         <AnimatePresence>
@@ -276,20 +296,20 @@ export const Insights: React.FC = () => {
       </div>
 
       {/* AI Query Section */}
-      <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl shadow-lg p-4 sm:p-6 overflow-hidden relative text-white w-full">
-        <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-          <Sparkles className="w-24 h-24" />
+      <div className="bg-gradient-to-br from-indigo-50 to-white rounded-2xl shadow-sm border border-indigo-100 p-4 sm:p-6 overflow-hidden relative w-full">
+        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+          <Sparkles className="w-24 h-24 text-indigo-600" />
         </div>
-        <div className="relative z-10">
+        <div className="relative z-10 text-gray-900">
           <div className="flex items-center justify-between mb-3 sm:mb-4">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-200" />
-              <h2 className="text-base sm:text-lg font-bold">Tanya AI Keuangan</h2>
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
+              <h2 className="text-base sm:text-lg font-bold text-indigo-900">Tanya AI Keuangan</h2>
             </div>
             {aiInsight && (
               <button 
                 onClick={() => setAiInsight(null)}
-                className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+                className="p-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded-lg transition-colors"
                 title="Hapus Jawaban"
               >
                 <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -307,7 +327,7 @@ export const Insights: React.FC = () => {
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl p-3 sm:p-4 mb-4 sm:mb-6 border border-white/20 shadow-xl relative group"
+              className="bg-white rounded-xl p-3 sm:p-4 mb-4 sm:mb-6 border border-indigo-100 shadow-md relative group"
             >
               <div className="prose prose-sm max-w-none text-gray-800 [&_p]:mb-4 last:[&_p]:mb-0 text-xs sm:text-sm">
                 <Markdown>{aiInsight}</Markdown>
@@ -321,21 +341,21 @@ export const Insights: React.FC = () => {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Tanyakan sesuatu..."
-              className="w-full pl-3.5 pr-10 py-2.5 sm:pl-4 sm:pr-12 sm:py-3 bg-white border border-transparent rounded-xl focus:outline-none focus:ring-2 focus:ring-white/30 placeholder-gray-400 text-xs sm:text-sm text-gray-900 transition-all shadow-md"
+              className="w-full pl-3.5 pr-10 py-2.5 sm:pl-4 sm:pr-12 sm:py-3 bg-white border border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-400 text-xs sm:text-sm text-gray-900 transition-all shadow-sm"
               disabled={isGenerating}
             />
             <button
               type="submit"
               disabled={isGenerating || !query.trim()}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
             >
               {isGenerating ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             </button>
           </form>
           
           {!aiInsight && !query && (
-            <p className="mt-2.5 sm:mt-3 text-[10px] sm:text-xs text-indigo-100 opacity-80">
-              Contoh: "Berapa total makan saya?", "Kategori apa yang paling boros?"
+            <p className="mt-2.5 sm:mt-3 text-[10px] sm:text-xs text-indigo-500 opacity-80 font-medium">
+              Contoh: "Bagaimana cara saya agar lebih hemat?"
             </p>
           )}
         </div>
