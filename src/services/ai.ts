@@ -77,11 +77,16 @@ export async function parseExpenseInput(
   let budgetContext = "";
   if (frugalMode && budgets && currentExpenses) {
     const expensesByCategory = currentExpenses.reduce((acc, exp) => {
-      acc[exp.category] = (acc[exp.category] || 0) + exp.amount;
+      const category = exp.category;
+      acc[category] = (acc[category] || 0) + exp.amount;
       return acc;
     }, {} as Record<string, number>);
     
-    budgetContext = budgets.map(b => `${b.category}:${b.amount - (expensesByCategory[b.category] || 0)}`).join('|');
+    budgetContext = budgets.map(b => {
+      const spent = expensesByCategory[b.category] || 0;
+      const remaining = b.amount - spent;
+      return `${b.category} (Sisa: Rp${remaining.toLocaleString('id-ID')} / Total: Rp${b.amount.toLocaleString('id-ID')})`;
+    }).join(', ');
   }
 
   try {
@@ -99,7 +104,9 @@ Rules:
 2. **Category**: Assign to the most relevant category: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'. If unsure, use 'Lainnya'.
 3. **Date**: Use YYYY-MM-DD. Today is ${currentDate}. Default to today if no date mentioned.
 4. **Description**: Capitalize the first letter. Keep it concise.
-5. **Frugal Warning**: ${frugalMode ? `If the expense is a non-essential "want", provide a short witty warning in Indonesian. Context: ${budgetContext}` : '""'}`,
+5. **Frugal Warning**: ${frugalMode ? `Evaluate if this expense is a "need" or a "want". Use the Budget context: [${budgetContext}]. 
+   If this expense is for a "want" (like snacks, games, hobby) OR if it will exceed/nearly exhaust the remaining budget for its category, provide a witty, slightly "judgy" warning in Indonesian. 
+   Be specific about the budget if it's tight. If it's a critical basic need and budget is safe, return empty string.` : '""'}`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -152,7 +159,8 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
       Actual Expenses:
       ${summary}
       
-      Format the response as a clean bulleted list in Markdown. Use the "•" symbol for each bullet point.`,
+      Format the response as a clean bulleted list in Markdown. 
+      CRITICAL: Use the "•" symbol for each bullet point and provide exactly one empty line (double space) between each bullet point to make it easier to read.`,
       config: {
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
@@ -237,7 +245,8 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
       Actual Expenses:
       ${summary}
       
-      Format the response as a clean bulleted list in Markdown. Use the "•" symbol for each bullet point.`,
+      Format the response as a clean bulleted list in Markdown. 
+      CRITICAL: Use the "•" symbol for each bullet point and provide exactly one empty line (double space) between each bullet point to make it easier to read.`,
       config: {
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
