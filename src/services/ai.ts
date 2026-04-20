@@ -2,12 +2,13 @@ import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { Expense, Budget } from "../types";
 
 export async function testApiKey(apiKey: string): Promise<boolean> {
-  if (!apiKey) return false;
+  const cleanKey = apiKey.trim();
+  if (!cleanKey) return false;
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: cleanKey });
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: "Hi",
+      model: "gemini-1.5-flash",
+      contents: "test",
       config: { 
         maxOutputTokens: 5
       }
@@ -17,8 +18,6 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
     let errorStr = '';
     if (error instanceof Error) {
       errorStr = error.message;
-    } else if (typeof error === 'object' && error !== null) {
-      try { errorStr = JSON.stringify(error); } catch (e) { errorStr = String(error); }
     } else {
       errorStr = String(error);
     }
@@ -26,6 +25,9 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
     
     if (errorStr.includes('429') || errorStr.includes('quota') || errorStr.includes('exhausted')) {
       throw new Error("QUOTA_EXCEEDED");
+    }
+    if (errorStr.includes('403') || errorStr.includes('permission') || errorStr.includes('api_key_invalid')) {
+      throw new Error("INVALID_KEY");
     }
     console.error("API Key test failed:", error);
     return false;
@@ -89,9 +91,9 @@ export async function parseExpenseInput(
   }
 
   try {
-    const ai = getAi(apiKey);
+    const ai = getAi(apiKey.trim());
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: `Input: "${input}"`,
       config: {
         systemInstruction: `Extract expenses from user input. 
@@ -142,12 +144,12 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
   if (expenses.length === 0) return "Belum ada data pengeluaran untuk dianalisis.";
 
   try {
-    const ai = getAi(apiKey);
+    const ai = getAi(apiKey.trim());
     const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: `Analyze the following financial data for this month and provide 3-4 concise, actionable insights or advice in Indonesian. 
       Focus on spending patterns, potential savings, and budget warnings (comparing actual spending vs budgets).
       
@@ -173,7 +175,7 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
   }
 
   try {
-    const ai = getAi(apiKey);
+    const ai = getAi(apiKey.trim());
     const now = new Date();
     const currentYear = now.getFullYear();
     
@@ -182,7 +184,7 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: `You are a financial assistant. Use the following expense and budget data to answer the user's question.
       
       Context:
@@ -222,12 +224,12 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
   }
 
   try {
-    const ai = getAi(apiKey);
+    const ai = getAi(apiKey.trim());
     const summary = expenses.map(e => `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount}`).join('\n');
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: `Analyze the following financial data for this month and provide 3-4 concise, actionable insights or advice in Indonesian. 
       Focus on spending patterns, potential savings, and budget warnings (comparing actual spending vs budgets).
       
@@ -258,7 +260,7 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
   }
 
   try {
-    const ai = getAi(apiKey);
+    const ai = getAi(apiKey.trim());
     const now = new Date();
     const currentYear = now.getFullYear();
     
@@ -267,7 +269,7 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: `You are a financial assistant. Use the following expense and budget data to answer the user's question.
       
       Context:
@@ -307,7 +309,7 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
   }
 
   try {
-    const ai = getAi(apiKey);
+    const ai = getAi(apiKey.trim());
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     const expenseSummary = expenses.reduce((acc, e) => {
       acc[e.category] = (acc[e.category] || 0) + e.amount;
@@ -319,7 +321,7 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
       .join('\n');
 
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: `User Request: "${input}"
       
       Current Budgets:

@@ -40,9 +40,12 @@ export const Settings: React.FC = () => {
       }
     } catch (error: any) {
       if (error.message === 'QUOTA_EXCEEDED') {
-        setApiKey(localApiKey);
-        localStorage.setItem('gemini_api_key', localApiKey);
+        setApiKey(localApiKey.trim());
+        localStorage.setItem('gemini_api_key', localApiKey.trim());
         setStatus('quota_exceeded');
+      } else if (error.message === 'INVALID_KEY') {
+        setStatus('error');
+        setErrorMessage('API Key tidak valid atau tidak memiliki izin akses (403).');
       } else {
         setStatus('error');
         setErrorMessage(error.message || 'Terjadi kesalahan saat menguji API Key.');
