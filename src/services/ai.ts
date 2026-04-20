@@ -7,11 +7,8 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
   try {
     const ai = new GoogleGenAI({ apiKey: cleanKey });
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: "test",
-      config: { 
-        maxOutputTokens: 5
-      }
+      model: "gemini-3-flash-preview",
+      contents: "test"
     });
     return !!response.text;
   } catch (error: any) {
@@ -26,7 +23,7 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
     if (errorStr.includes('429') || errorStr.includes('quota') || errorStr.includes('exhausted')) {
       throw new Error("QUOTA_EXCEEDED");
     }
-    if (errorStr.includes('403') || errorStr.includes('permission') || errorStr.includes('api_key_invalid')) {
+    if (errorStr.includes('403') || errorStr.includes('permission') || errorStr.includes('key_invalid') || errorStr.includes('invalid_key')) {
       throw new Error("INVALID_KEY");
     }
     console.error("API Key test failed:", error);
@@ -93,7 +90,7 @@ export async function parseExpenseInput(
   try {
     const ai = getAi(apiKey.trim());
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Input: "${input}"`,
       config: {
         systemInstruction: `Extract expenses from user input. 
@@ -123,7 +120,8 @@ Rules:
             required: ["amount", "category", "date", "description", "frugalWarning"]
           }
         },
-        temperature: 0
+        temperature: 0,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
     });
 
@@ -149,7 +147,7 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Analyze the following financial data for this month and provide 3-4 concise, actionable insights or advice in Indonesian. 
       Focus on spending patterns, potential savings, and budget warnings (comparing actual spending vs budgets).
       
@@ -160,7 +158,10 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
       ${summary}
       
       Format the response as a clean bulleted list in Markdown. 
-      CRITICAL: Use the "•" symbol for each bullet point and provide exactly one empty line (double space) between each bullet point to make it easier to read.`
+      CRITICAL: Use the "•" symbol for each bullet point and provide exactly one empty line (double space) between each bullet point to make it easier to read.`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     return response.text || null;
@@ -184,7 +185,7 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `You are a financial assistant. Use the following expense and budget data to answer the user's question.
       
       Context:
@@ -204,7 +205,10 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
       Expenses:
       ${summary}
       
-      User Question: "${input}"`
+      User Question: "${input}"`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     return response.text || null;
@@ -229,7 +233,7 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Analyze the following financial data for this month and provide 3-4 concise, actionable insights or advice in Indonesian. 
       Focus on spending patterns, potential savings, and budget warnings (comparing actual spending vs budgets).
       
@@ -240,7 +244,10 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
       ${summary}
       
       Format the response as a clean bulleted list in Markdown. 
-      CRITICAL: Use the "•" symbol for each bullet point and provide exactly one empty line (double space) between each bullet point to make it easier to read.`
+      CRITICAL: Use the "•" symbol for each bullet point and provide exactly one empty line (double space) between each bullet point to make it easier to read.`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     for await (const chunk of responseStream) {
@@ -269,7 +276,7 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
     const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
     
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `You are a financial assistant. Use the following expense and budget data to answer the user's question.
       
       Context:
@@ -289,7 +296,10 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
       Expenses:
       ${summary}
       
-      User Question: "${input}"`
+      User Question: "${input}"`,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     for await (const chunk of responseStream) {
@@ -321,7 +331,7 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
       .join('\n');
 
     const responseStream = await ai.models.generateContentStream({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `User Request: "${input}"
       
       Current Budgets:
@@ -342,7 +352,10 @@ export async function* getBudgetOptimizationStream(input: string, budgets: any[]
         "Makanan & Minuman": 1500000,
         "Hiburan": 0
       }
-      \`\`\``
+      \`\`\``,
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
     });
 
     for await (const chunk of responseStream) {
