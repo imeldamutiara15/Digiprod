@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Ba
 import { formatCurrency, cn } from '../lib/utils';
 import { format, parseISO, getDay } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { Sparkles, Loader2, Send, X, ChevronDown, ChevronUp, Lightbulb, TrendingUp, ShieldCheck, PieChart as PieChartIcon } from 'lucide-react';
+import { Sparkles, Loader2, Send, X, ChevronDown, ChevronUp, Lightbulb, TrendingUp, ShieldCheck, PieChart as PieChartIcon, Key } from 'lucide-react';
 import { queryFinancialAIStream, getFinancialInsightsStream } from '../services/ai';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
@@ -218,6 +218,20 @@ export const Insights: React.FC = () => {
       setIsSummaryExpanded(!isSummaryExpanded);
     }
   };
+
+  if (!apiKey) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 p-8 text-center">
+        <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Key className="w-8 h-8" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-2">Fitur AI Belum Siap</h3>
+        <p className="text-gray-500 mb-6 max-w-sm mx-auto">
+          Untuk menggunakan fitur analisis dan tanya AI, silakan masukkan **AI API Key** Anda di menu Pengaturan terlebih dahulu.
+        </p>
+      </div>
+    );
+  }
 
   if (pieData.length === 0) {
     return (

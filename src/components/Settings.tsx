@@ -12,7 +12,7 @@ export const Settings: React.FC = () => {
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isEnvKey = !localStorage.getItem('gemini_api_key') && !!process.env.GEMINI_API_KEY;
+  const isEnvKey = false; // Disabled for commercial BYOK concept
 
   useEffect(() => {
     setLocalApiKey(apiKey);
