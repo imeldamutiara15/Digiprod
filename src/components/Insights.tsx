@@ -158,9 +158,17 @@ export const Insights: React.FC = () => {
   const currentDay = isCurrentMonth ? now.getDate() : daysInSelectedMonth;
   
   // 1. Batas Aman Harian
-  const remainingBudget = totalBudget - totalExpenses;
+  // Treat "Tagihan & Utilitas" budget as spent since it's usually fixed/mandatory
+  const billsBudget = budgets.find(b => b.category === 'Tagihan & Utilitas')?.amount || 0;
+  const billsExpenses = expensesByCategory['Tagihan & Utilitas'] || 0;
+  const committedBills = Math.max(billsBudget, billsExpenses);
+  
+  // Adjusted remaining budget: total budget - other expenses - committed bills
+  const otherExpenses = totalExpenses - billsExpenses;
+  const adjustedRemainingBudget = totalBudget - otherExpenses - committedBills;
+  
   const remainingDays = daysInSelectedMonth - currentDay + 1;
-  const safeToSpend = remainingBudget > 0 && remainingDays > 0 ? remainingBudget / remainingDays : 0;
+  const safeToSpend = adjustedRemainingBudget > 0 && remainingDays > 0 ? adjustedRemainingBudget / remainingDays : 0;
   // ----------------------------
 
   const handleQueryAI = async (e?: React.FormEvent) => {
@@ -407,7 +415,10 @@ export const Insights: React.FC = () => {
           <div>
             <div className="text-2xl font-black text-gray-900">{formatCurrency(safeToSpend)}</div>
             <div className="text-[10px] text-gray-500 mt-1">
-              Sisa {remainingDays} hari • Sisa Anggaran {formatCurrency(remainingBudget)}
+              Sisa {remainingDays} hari • Sisa Anggaran {formatCurrency(adjustedRemainingBudget)}
+            </div>
+            <div className="text-[10px] text-indigo-500 font-medium mt-0.5 italic">
+              *Anggaran Tagihan & Utilitas sudah diproteksi.
             </div>
           </div>
         </div>

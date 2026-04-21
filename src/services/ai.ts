@@ -127,7 +127,7 @@ export async function parseExpenseInput(
 Rules:
 1. Amount: Convert slang (30k->30000, 1jt->1000000).
 2. Category: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'.
-3. Frugal Warning: ${frugalMode ? `Evaluate based on budgets: [${budgetContext}]. If unnecessary/over budget, provide a witty witty short judgy warning in Indonesian.` : '""'}`,
+3. Frugal Warning: ${frugalMode ? `Evaluate strictly against budgets: [${budgetContext}]. If a category budget is exceeded or near limit, give a direct witty warning in Indonesian referencing the specific remaining budget for that category. If no budget exists for the category, focus on necessity.` : '""'}`.trim(),
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
