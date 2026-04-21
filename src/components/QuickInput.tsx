@@ -83,7 +83,9 @@ export const QuickInput: React.FC = () => {
       }
     } catch (error: any) {
       setProcessingTasks(prev => prev.filter(t => t.id !== taskId));
-      if (error?.message === 'RATE_LIMIT_RPM') {
+      if (error?.message === 'MODEL_NOT_FOUND') {
+        setFeedback({ message: "Model AI tidak tersedia. Hubungi admin.", type: 'error' });
+      } else if (error?.message === 'RATE_LIMIT_RPM') {
         setFeedback({ message: "Terlalu banyak permintaan. Tunggu 1 menit.", type: 'error' });
       } else if (error?.message === 'QUOTA_EXCEEDED') {
         setFeedback({ message: "Kuota harian habis. Tunggu besok.", type: 'error' });

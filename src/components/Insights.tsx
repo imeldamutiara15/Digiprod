@@ -184,7 +184,9 @@ export const Insights: React.FC = () => {
       }
     } catch (error: any) {
       console.error(error);
-      if (error?.message === 'RATE_LIMIT_RPM') {
+      if (error?.message === 'MODEL_NOT_FOUND') {
+        setError("Model AI gemini-2.0-flash-exp tidak didukung di region/akun ini.");
+      } else if (error?.message === 'RATE_LIMIT_RPM') {
         setError("Terlalu banyak pertanyaan dalam semenit. Tunggu sebentar.");
       } else if (error?.message === 'QUOTA_EXCEEDED') {
         setError("Kuota harian AI habis. Coba lagi besok.");
@@ -215,7 +217,9 @@ export const Insights: React.FC = () => {
         }
       } catch (error: any) {
         console.error(error);
-        if (error?.message === 'RATE_LIMIT_RPM') {
+        if (error?.message === 'MODEL_NOT_FOUND') {
+          setError("Akses model AI dibatasi pada akun ini.");
+        } else if (error?.message === 'RATE_LIMIT_RPM') {
           setError("Terlalu banyak permintaan (RPM). Tunggu 1 menit.");
         } else if (error?.message === 'QUOTA_EXCEEDED') {
           setError("Kuota harian AI habis.");

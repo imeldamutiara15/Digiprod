@@ -7,7 +7,7 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
   try {
     const ai = new GoogleGenAI({ apiKey: cleanKey });
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.0-flash-exp",
       contents: "test"
     });
     return !!response.text;
@@ -20,8 +20,12 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
     }
     errorStr = errorStr.toLowerCase();
     
-    if (errorStr.includes('429') || errorStr.includes('quota') || errorStr.includes('exhausted')) {
+    // Detailed error detection
+    if (errorStr.includes('429') || (errorStr.includes('quota') && !errorStr.includes('model'))) {
       throw new Error("QUOTA_EXCEEDED");
+    }
+    if (errorStr.includes('404') || errorStr.includes('not found') || errorStr.includes('model')) {
+      throw new Error("MODEL_NOT_FOUND");
     }
     if (errorStr.includes('403') || errorStr.includes('permission') || errorStr.includes('key_invalid') || errorStr.includes('invalid_key')) {
       throw new Error("INVALID_KEY");
@@ -49,6 +53,11 @@ function handleAiError(error: any) {
     }
     throw new Error("QUOTA_EXCEEDED");
   }
+
+  if (errorStr.includes('404') || errorStr.includes('not found') || errorStr.includes('model')) {
+    throw new Error("MODEL_NOT_FOUND");
+  }
+
   console.error("AI Error:", error);
   return null;
 }
@@ -61,27 +70,6 @@ function getAi(apiKey: string) {
   cachedAi = new GoogleGenAI({ apiKey });
   cachedKey = apiKey;
   return cachedAi;
-}
-
-// Helper for automatic retries
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
-  let lastError: any;
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (error: any) {
-      lastError = error;
-      const errorStr = String(error).toLowerCase();
-      // Don't retry if it's a quota or auth issue
-      if (errorStr.includes('429') || errorStr.includes('quota') || errorStr.includes('invalid_key')) {
-        throw error;
-      }
-      if (i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay * (i + 1))); // Exponential backoff
-      }
-    }
-  }
-  throw lastError;
 }
 
 // Helper to format expenses
@@ -132,7 +120,7 @@ export async function parseExpenseInput(
 
   const ai = getAi(apiKey.trim());
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.0-flash-exp",
     contents: `Input: "${input}"`,
     config: {
       systemInstruction: `Extract expenses. Date: ${currentDate}. Year: ${currentYear}.
@@ -174,7 +162,7 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
   const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
   
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.0-flash-exp",
     contents: `Analyze:
 Budgets:
 ${budgetSummary}
@@ -195,7 +183,7 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
   const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
   
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.0-flash-exp",
     contents: `Assistant context: Today ${now.toISOString().split('T')[0]}, Year ${currentYear}, UI Month ${selectedMonth}.
 Budgets: ${budgetSummary}
 Expenses: ${summary}
@@ -216,7 +204,7 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
   const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
 
   const responseStream = await ai.models.generateContentStream({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.0-flash-exp",
     contents: `Analyze data and give 3-4 insights in Indonesian.
 Budgets:
 ${budgetSummary}
@@ -239,7 +227,7 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
   const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
 
   const responseStream = await ai.models.generateContentStream({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.0-flash-exp",
     contents: `Assistant for: Today ${now.toISOString().split('T')[0]}, Year ${currentYear}, UI Month ${selectedMonth}.
 Budgets: ${budgetSummary}
 Expenses: ${summary}
@@ -266,7 +254,7 @@ export async function* getBudgetOptimizationStream(input: string, budgets: Budge
     .join('\n');
 
   const responseStream = await ai.models.generateContentStream({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.0-flash-exp",
     contents: `Optimize user budget: "${input}"
 Current Budgets:
 ${budgetSummary}

@@ -39,7 +39,10 @@ export const Settings: React.FC = () => {
         setErrorMessage('API Key tidak memberikan respon. Pastikan key benar.');
       }
     } catch (error: any) {
-      if (error.message === 'RATE_LIMIT_RPM') {
+      if (error.message === 'MODEL_NOT_FOUND') {
+        setStatus('error');
+        setErrorMessage('Model gemini-2.0-flash-exp tidak ditemukan pada akun ini. Pastikan akun memiliki akses.');
+      } else if (error.message === 'RATE_LIMIT_RPM') {
         setStatus('error');
         setErrorMessage('Terlalu banyak permintaan (RPM). Tunggu 1 menit sebelum tes lagi.');
       } else if (error.message === 'QUOTA_EXCEEDED') {
