@@ -41,7 +41,7 @@ export const Settings: React.FC = () => {
     } catch (error: any) {
       if (error.message === 'MODEL_NOT_FOUND') {
         setStatus('error');
-        setErrorMessage('Model gemini-1.5-flash tidak ditemukan pada akun ini. Pastikan akun memiliki akses.');
+        setErrorMessage('Model gemini-flash-latest tidak ditemukan pada akun ini. Pastikan akun memiliki akses.');
       } else if (error.message === 'RATE_LIMIT_RPM') {
         setStatus('error');
         setErrorMessage('Terlalu banyak permintaan (RPM). Tunggu 1 menit sebelum tes lagi.');

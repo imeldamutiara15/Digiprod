@@ -7,7 +7,7 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
   try {
     const ai = new GoogleGenAI({ apiKey: cleanKey });
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-flash-latest",
       contents: "test"
     });
     return !!response.text;
@@ -120,7 +120,7 @@ export async function parseExpenseInput(
 
   const ai = getAi(apiKey.trim());
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-flash-latest",
     contents: `Input: "${input}"`,
     config: {
       systemInstruction: `Extract expenses. Date: ${currentDate}. Year: ${currentYear}.
@@ -162,7 +162,7 @@ export async function getFinancialInsights(expenses: Expense[], budgets: Budget[
   const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
   
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-flash-latest",
     contents: `Analyze:
 Budgets:
 ${budgetSummary}
@@ -183,7 +183,7 @@ export async function queryFinancialAI(input: string, expenses: Expense[], budge
   const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
   
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-flash-latest",
     contents: `Assistant context: Today ${now.toISOString().split('T')[0]}, Year ${currentYear}, UI Month ${selectedMonth}.
 Budgets: ${budgetSummary}
 Expenses: ${summary}
@@ -204,7 +204,7 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
   const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
 
   const responseStream = await ai.models.generateContentStream({
-    model: "gemini-1.5-flash",
+    model: "gemini-flash-latest",
     contents: `Analyze data and give 3-4 insights in Indonesian.
 Budgets:
 ${budgetSummary}
@@ -227,7 +227,7 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
   const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
 
   const responseStream = await ai.models.generateContentStream({
-    model: "gemini-1.5-flash",
+    model: "gemini-flash-latest",
     contents: `Assistant for: Today ${now.toISOString().split('T')[0]}, Year ${currentYear}, UI Month ${selectedMonth}.
 Budgets: ${budgetSummary}
 Expenses: ${summary}
@@ -254,7 +254,7 @@ export async function* getBudgetOptimizationStream(input: string, budgets: Budge
     .join('\n');
 
   const responseStream = await ai.models.generateContentStream({
-    model: "gemini-1.5-flash",
+    model: "gemini-flash-latest",
     contents: `Optimize user budget: "${input}"
 Current Budgets:
 ${budgetSummary}
