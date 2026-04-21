@@ -83,8 +83,10 @@ export const QuickInput: React.FC = () => {
       }
     } catch (error: any) {
       setProcessingTasks(prev => prev.filter(t => t.id !== taskId));
-      if (error?.message === 'QUOTA_EXCEEDED') {
-        setFeedback({ message: "Kuota AI habis. Tunggu besok.", type: 'error' });
+      if (error?.message === 'RATE_LIMIT_RPM') {
+        setFeedback({ message: "Terlalu banyak permintaan. Tunggu 1 menit.", type: 'error' });
+      } else if (error?.message === 'QUOTA_EXCEEDED') {
+        setFeedback({ message: "Kuota harian habis. Tunggu besok.", type: 'error' });
       } else {
         console.error("Failed to parse expense", error);
         setFeedback({ message: "Terjadi kesalahan AI.", type: 'error' });

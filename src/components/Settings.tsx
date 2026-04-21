@@ -39,7 +39,10 @@ export const Settings: React.FC = () => {
         setErrorMessage('API Key tidak memberikan respon. Pastikan key benar.');
       }
     } catch (error: any) {
-      if (error.message === 'QUOTA_EXCEEDED') {
+      if (error.message === 'RATE_LIMIT_RPM') {
+        setStatus('error');
+        setErrorMessage('Terlalu banyak permintaan (RPM). Tunggu 1 menit sebelum tes lagi.');
+      } else if (error.message === 'QUOTA_EXCEEDED') {
         setApiKey(localApiKey.trim());
         localStorage.setItem('gemini_api_key', localApiKey.trim());
         setStatus('quota_exceeded');

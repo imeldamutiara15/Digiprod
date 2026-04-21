@@ -184,7 +184,13 @@ export const Insights: React.FC = () => {
       }
     } catch (error: any) {
       console.error(error);
-      setError("Gagal mendapatkan wawasan AI. Periksa koneksi atau API Key Anda.");
+      if (error?.message === 'RATE_LIMIT_RPM') {
+        setError("Terlalu banyak pertanyaan dalam semenit. Tunggu sebentar.");
+      } else if (error?.message === 'QUOTA_EXCEEDED') {
+        setError("Kuota harian AI habis. Coba lagi besok.");
+      } else {
+        setError("Gagal mendapatkan wawasan AI. Periksa koneksi atau API Key Anda.");
+      }
       if (!aiInsight) setAiInsight(null);
     } finally {
       setIsGenerating(false);
@@ -209,7 +215,13 @@ export const Insights: React.FC = () => {
         }
       } catch (error: any) {
         console.error(error);
-        setError("Gagal mendapatkan ringkasan AI.");
+        if (error?.message === 'RATE_LIMIT_RPM') {
+          setError("Terlalu banyak permintaan (RPM). Tunggu 1 menit.");
+        } else if (error?.message === 'QUOTA_EXCEEDED') {
+          setError("Kuota harian AI habis.");
+        } else {
+          setError("Gagal mendapatkan ringkasan AI.");
+        }
         if (!generalSummary) setGeneralSummary(null);
       } finally {
         setIsGeneratingSummary(false);
