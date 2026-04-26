@@ -86,7 +86,7 @@ function getFullSummary(expenses: Expense[]): string {
   });
 
   return ytdExpenses.map(e => 
-    `- ${e.date}: ${e.description} (${e.category}) Rp${e.amount}`
+    `- ${e.date}: ${e.description} (${e.category}) Rp ${e.amount.toLocaleString('id-ID')}`
   ).join('\n');
 }
 
@@ -112,22 +112,40 @@ export async function parseExpenseInput(
     }, {} as Record<string, number>);
     
     budgetContext = budgets.map(b => {
-      const spent = expensesByCategory[b.category] || 0;
+      let spent = expensesByCategory[b.category] || 0;
+      
+      // Sync with UI logic: Treat 'Tagihan & Utilitas' budget as spent if not yet reached
+      const isBills = b.category === 'Tagihan & Utilitas';
+      if (isBills) {
+        spent = Math.max(spent, b.amount);
+      }
+      
       const remaining = b.amount - spent;
-      return `${b.category}: Rp${remaining.toLocaleString('id-ID')}/${b.amount.toLocaleString('id-ID')}`;
-    }).join(', ');
+      return `[Category: ${b.category} | Budget Limit: Rp ${b.amount.toLocaleString('id-ID')} | Actual Spent: Rp ${spent.toLocaleString('id-ID')} | Available Balance: Rp ${remaining.toLocaleString('id-ID')}]`;
+    }).join('\n');
   }
 
   const ai = getAi(apiKey.trim());
   const response = await ai.models.generateContent({
     model: "gemini-flash-latest",
-    contents: `Input: "${input}"`,
+    contents: `CURRENT CONTEXT:
+Budgets & Spending:
+${budgetContext}
+
+USER INPUT:
+"${input}"`,
     config: {
-      systemInstruction: `Extract expenses. Date: ${currentDate}. Year: ${currentYear}.
+      systemInstruction: `Extract expenses and provide Frugal Warnings.
+Date: ${currentDate}, Year: ${currentYear}.
+
 Rules:
 1. Amount: Convert slang (30k->30000, 1jt->1000000).
 2. Category: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'.
-3. Frugal Warning: ${frugalMode ? `Evaluate strictly against budgets: [${budgetContext}]. If a category budget is exceeded or near limit, give a direct witty warning in Indonesian referencing the specific remaining budget for that category. If no budget exists for the category, focus on necessity.` : '""'}`.trim(),
+3. Frugal Warning: ${frugalMode ? `Evaluate strictly against the 'Available Balance' provided in the context. 
+If the category budget is exceeded or near zero after this purchase, generate a witty, judgy, and funny warning in Indonesian. 
+Calculation: New Balance = (Available Balance - Current Expense Amount).
+Mention the precise remaining balance (New Balance) AFTER this expense. 
+Format all currency/money values with Indonesian thousands separators (e.g., Rp 60.000).` : '""'}`.trim(),
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
@@ -205,7 +223,8 @@ export async function* getFinancialInsightsStream(expenses: Expense[], budgets: 
 
   const responseStream = await ai.models.generateContentStream({
     model: "gemini-flash-latest",
-    contents: `Analyze data and give 3-4 insights in Indonesian.
+    contents: `Analyze data and give 3-4 insights in Indonesian. 
+Format all currency/money values with Indonesian thousands separators (e.g., Rp 60.000).
 Budgets:
 ${budgetSummary}
 Expenses:
@@ -229,6 +248,7 @@ export async function* queryFinancialAIStream(input: string, expenses: Expense[]
   const responseStream = await ai.models.generateContentStream({
     model: "gemini-flash-latest",
     contents: `Assistant for: Today ${now.toISOString().split('T')[0]}, Year ${currentYear}, UI Month ${selectedMonth}.
+Format all currency/money values with Indonesian thousands separators (e.g., Rp 60.000).
 Budgets: ${budgetSummary}
 Expenses: ${summary}
 User: "${input}"`,
@@ -260,7 +280,7 @@ Current Budgets:
 ${budgetSummary}
 Actual Spending:
 ${expenseText}
-Rules: Explain moves briefly in Indonesian. Return new JSON block at the bottom.`,
+Rules: Explain moves briefly in Indonesian. Return new JSON block at the bottom. Format all currency/money values with Indonesian thousands separators (e.g., Rp 60.000).`,
   });
 
   for await (const chunk of responseStream) {

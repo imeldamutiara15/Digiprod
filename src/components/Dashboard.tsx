@@ -7,8 +7,23 @@ export const Dashboard: React.FC = () => {
   const { filteredExpenses, budgets } = useFinance();
 
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  
+  // Treat "Tagihan & Utilitas" budget as spent/protected
+  const expensesByCategory = filteredExpenses.reduce((acc, expense) => {
+    acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const adjustedExpenses = budgets.reduce((sum, b) => {
+    if (b.category === 'Tagihan & Utilitas') {
+      const spent = expensesByCategory[b.category] || 0;
+      return sum + Math.max(spent, b.amount);
+    }
+    return sum + (expensesByCategory[b.category] || 0);
+  }, 0);
+
   const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
-  const remaining = totalBudget - totalExpenses;
+  const remaining = totalBudget - adjustedExpenses;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
