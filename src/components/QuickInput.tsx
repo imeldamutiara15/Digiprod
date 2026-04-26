@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Send, Loader2, Sparkles, Coins, AlertCircle, Check, X } from 'lucide-react';
-import { parseExpenseInput } from '../services/ai';
+import { parseExpenseInput, streamFrugalWarning } from '../services/ai';
 import { useFinance } from '../context/FinanceContext';
 import { Expense } from '../types';
 
@@ -70,11 +70,35 @@ export const QuickInput: React.FC = () => {
       setProcessingTasks(prev => prev.filter(t => t.id !== taskId));
 
       if (parsedExpenses && parsedExpenses.length > 0) {
-        const hasWarning = parsedExpenses.some(e => e.frugalWarning);
-        
-        if (isFrugalMode && hasWarning) {
-          // If frugal mode and there's a warning, we must show it
-          setPendingExpenses(parsedExpenses.map(e => ({ ...e, originalText: currentInput })));
+        if (isFrugalMode) {
+          // Initialize pending expenses with empty warnings
+          const initialPending = parsedExpenses.map(e => ({ ...e, frugalWarning: '...', originalText: currentInput }));
+          setPendingExpenses(initialPending);
+
+          // Stream warnings for each expense
+          parsedExpenses.forEach((expense, index) => {
+            (async () => {
+              try {
+                let firstChunk = true;
+                const stream = streamFrugalWarning(expense as Expense, apiKey, budgets, filteredExpenses);
+                for await (const chunk of stream) {
+                  setPendingExpenses(prev => {
+                    if (!prev) return prev;
+                    const updated = [...prev];
+                    if (firstChunk) {
+                      updated[index] = { ...updated[index], frugalWarning: chunk };
+                      firstChunk = false;
+                    } else {
+                      updated[index] = { ...updated[index], frugalWarning: (updated[index].frugalWarning || '') + chunk };
+                    }
+                    return updated;
+                  });
+                }
+              } catch (err) {
+                console.error("Error streaming frugal warning", err);
+              }
+            })();
+          });
         } else {
           handleSaveExpenses(parsedExpenses);
         }
@@ -162,12 +186,17 @@ export const QuickInput: React.FC = () => {
             <div className="space-y-2">
               <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Peringatan Mode Hemat</p>
               {pendingExpenses.map((exp, idx) => (
-                <div key={idx} className="text-xs text-amber-900">
+                <div key={idx} className="text-xs text-amber-900 leading-relaxed">
                   <span className="font-bold">{exp.description} (Rp {exp.amount.toLocaleString('id-ID')}): </span>
                   {exp.frugalWarning ? (
-                    <span className="italic">"{exp.frugalWarning}"</span>
+                    <span className="italic relative">
+                      "{exp.frugalWarning}"
+                      {exp.frugalWarning.endsWith('...') && (
+                        <span className="inline-block w-1 h-3 bg-amber-400 animate-pulse ml-0.5" />
+                      )}
+                    </span>
                   ) : (
-                    <span>Tampak seperti kebutuhan primer.</span>
+                    <span className="opacity-50">Menganalisa...</span>
                   )}
                 </div>
               ))}

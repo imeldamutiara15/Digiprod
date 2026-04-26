@@ -103,49 +103,21 @@ export async function parseExpenseInput(
   const currentYear = now.getFullYear();
   const currentDate = now.toISOString().split('T')[0];
 
-  let budgetContext = "";
-  if (frugalMode && budgets && currentExpenses) {
-    const expensesByCategory = currentExpenses.reduce((acc, exp) => {
-      const category = exp.category;
-      acc[category] = (acc[category] || 0) + exp.amount;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    budgetContext = budgets.map(b => {
-      let spent = expensesByCategory[b.category] || 0;
-      
-      // Sync with UI logic: Treat 'Tagihan & Utilitas' budget as spent if not yet reached
-      const isBills = b.category === 'Tagihan & Utilitas';
-      if (isBills) {
-        spent = Math.max(spent, b.amount);
-      }
-      
-      const remaining = b.amount - spent;
-      return `[Category: ${b.category} | Budget Limit: Rp ${b.amount.toLocaleString('id-ID')} | Actual Spent: Rp ${spent.toLocaleString('id-ID')} | Available Balance: Rp ${remaining.toLocaleString('id-ID')}]`;
-    }).join('\n');
-  }
-
   const ai = getAi(apiKey.trim());
+  
+  // For the extraction, we don't necessarily NEED the budget context anymore 
+  // if we're going to stream warnings separately, but let's keep it for now 
+  // to ensure category alignment.
+  
   const response = await ai.models.generateContent({
     model: "gemini-flash-latest",
-    contents: `CURRENT CONTEXT:
-Budgets & Spending:
-${budgetContext}
-
-USER INPUT:
-"${input}"`,
+    contents: `EXTRACT DATA from: "${input}"
+Date: ${currentDate}, Year: ${currentYear}`,
     config: {
-      systemInstruction: `Extract expenses and provide Frugal Warnings.
-Date: ${currentDate}, Year: ${currentYear}.
-
-Rules:
-1. Amount: Convert slang (30k->30000, 1jt->1000000).
+      systemInstruction: `Extract expenses. Rules:
+1. Amount: Convert slang (30k->30000).
 2. Category: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'.
-3. Frugal Warning: ${frugalMode ? `Evaluate strictly against the 'Available Balance' provided in the context. 
-If the category budget is exceeded or near zero after this purchase, generate a witty, judgy, and funny warning in Indonesian. 
-Calculation: New Balance = (Available Balance - Current Expense Amount).
-Mention the precise remaining balance (New Balance) AFTER this expense. 
-Format all currency/money values with Indonesian thousands separators (e.g., Rp 60.000).` : '""'}`.trim(),
+3. Output: JSON Array.`,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
@@ -155,10 +127,9 @@ Format all currency/money values with Indonesian thousands separators (e.g., Rp 
             amount: { type: Type.NUMBER },
             category: { type: Type.STRING },
             date: { type: Type.STRING },
-            description: { type: Type.STRING },
-            frugalWarning: { type: Type.STRING }
+            description: { type: Type.STRING }
           },
-          required: ["amount", "category", "date", "description", "frugalWarning"]
+          required: ["amount", "category", "date", "description"]
         }
       },
       temperature: 0
@@ -169,6 +140,56 @@ Format all currency/money values with Indonesian thousands separators (e.g., Rp 
   if (!text) return null;
   const parsed = JSON.parse(text);
   return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+export async function* streamFrugalWarning(
+  expense: Omit<Expense, 'id'>,
+  apiKey: string,
+  budgets: Budget[],
+  currentExpenses: Expense[]
+): AsyncGenerator<string, void, unknown> {
+  const ai = getAi(apiKey.trim());
+  
+  const expensesByCategory = currentExpenses.reduce((acc, exp) => {
+    const category = exp.category;
+    acc[category] = (acc[category] || 0) + exp.amount;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  const budget = budgets.find(b => b.category === expense.category);
+  let context = "";
+  if (budget) {
+    let spent = expensesByCategory[budget.category] || 0;
+    if (budget.category === 'Tagihan & Utilitas') {
+      spent = Math.max(spent, budget.amount);
+    }
+    const available = budget.amount - spent;
+    context = `Category: ${budget.category}, Current Budget Limit: Rp ${budget.amount.toLocaleString('id-ID')}, Already Spent: Rp ${spent.toLocaleString('id-ID')}, Available NOW: Rp ${available.toLocaleString('id-ID')}`;
+  } else {
+    context = `Category: ${expense.category}, No formal budget set. Treat with caution.`;
+  }
+
+  const responseStream = await ai.models.generateContentStream({
+    model: "gemini-flash-latest",
+    contents: `New Expense Attempt: ${expense.description} (Rp ${expense.amount.toLocaleString('id-ID')})
+Context: ${context}`,
+    config: {
+      systemInstruction: `You are a brutally honest, funny, and judgy financial assistant (Indonesian).
+Evaluate the new expense against the "Available NOW" balance provided.
+
+Rules:
+1. Be witty and slightly "judgy" about the purchase in Indonesian.
+2. Calculate exactly: [New Remaining = Available NOW - New Expense Amount].
+3. MUST state the final remaining balance clearly at the end (e.g., "Sisa anggaran kamu: Rp 440.000").
+4. ALWAYS format all currency with Indonesian dot separators (e.g., Rp 60.000).
+5. If the new balance is negative, be extra sassy about them going over budget.`,
+      temperature: 0.7
+    }
+  });
+
+  for await (const chunk of responseStream) {
+    if (chunk.text) yield chunk.text;
+  }
 }
 
 export async function getFinancialInsights(expenses: Expense[], budgets: Budget[], apiKey: string): Promise<string | null> {
