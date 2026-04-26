@@ -54,13 +54,16 @@ export const Budgets: React.FC = () => {
         
         // Extract text before any JSON block for streaming display
         let textPart = fullText;
-        const jsonMatchIndex = fullText.indexOf('```json');
-        const fallbackMatchIndex = fullText.indexOf('```\n{');
+        const codeBlockMatch = fullText.match(/```/);
         
-        if (jsonMatchIndex !== -1) {
-          textPart = fullText.substring(0, jsonMatchIndex);
-        } else if (fallbackMatchIndex !== -1) {
-          textPart = fullText.substring(0, fallbackMatchIndex);
+        if (codeBlockMatch && codeBlockMatch.index !== undefined) {
+          textPart = fullText.substring(0, codeBlockMatch.index);
+        } else {
+          // If no backticks yet, also check if it looks like it's starting a raw JSON object
+          const jsonStartIndex = fullText.indexOf('\n{');
+          if (jsonStartIndex !== -1 && fullText.includes('"')) {
+            textPart = fullText.substring(0, jsonStartIndex);
+          }
         }
         
         setAiMessage(textPart.trim());

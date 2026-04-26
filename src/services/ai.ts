@@ -284,24 +284,41 @@ export async function* getBudgetOptimizationStream(input: string, budgets: Budge
   if (!apiKey) throw new Error("API_KEY_MISSING");
 
   const ai = getAi(apiKey.trim());
-  const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount}`).join('\n');
-  const expensesByCategory = expenses.reduce((acc, exp) => {
-    acc[exp.category] = (acc[exp.category] || 0) + exp.amount;
+  const budgetSummary = budgets.map(b => `- ${b.category}: Rp ${b.amount.toLocaleString('id-ID')}`).join('\n');
+  const expensesByCategory = expenses.reduce((acc, expense) => {
+    acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
     return acc;
   }, {} as Record<string, number>);
 
   const expenseText = Object.entries(expensesByCategory)
-    .map(([cat, amt]) => `- ${cat}: Rp ${amt}`)
+    .map(([cat, amt]) => `- ${cat}: Rp ${amt.toLocaleString('id-ID')}`)
     .join('\n');
 
   const responseStream = await ai.models.generateContentStream({
     model: "gemini-flash-latest",
-    contents: `Optimize user budget: "${input}"
-Current Budgets:
+    contents: `USER GOAL: "${input}"
+CURRENT BUDGETS:
 ${budgetSummary}
-Actual Spending:
-${expenseText}
-Rules: Explain moves briefly in Indonesian. Return new JSON block at the bottom. Format all currency/money values with Indonesian thousands separators (e.g., Rp 60.000).`,
+
+ACTUAL SPENDING THIS MONTH:
+${expenseText}`,
+    config: {
+      systemInstruction: `You are a Smart Financial Optimization Assistant (Indonesian).
+Your goal is to help users reallocate their budget based on their goals and current spending habits.
+
+Rules:
+1. Persona: Professional yet friendly financial advisor. Bahasa Indonesia.
+2. Structure: 
+   - Start with a clear strategic analysis of why you are proposing these changes.
+   - Explain which categories were cut and why (e.g. based on low usage or high waste).
+   - Address the user's specific GOAL mentioned in the input.
+   - DO NOT just list the new amounts in text format; focus on the reasoning.
+   - ALWAYS end with a JSON block in markdown backticks representing the NEW full budget for ALL categories.
+3. Format: All currency in text must use Indonesian thousands separators (e.g., Rp 60.000).
+4. JSON: The keys MUST exactly match the categories: 'Makanan & Minuman', 'Transportasi', 'Belanja', 'Hiburan', 'Tagihan & Utilitas', 'Kesehatan & Kebugaran', 'Perjalanan', 'Lainnya'. 
+   Output all 8 categories in the JSON even if unchanged.`,
+      temperature: 0.7
+    }
   });
 
   for await (const chunk of responseStream) {
